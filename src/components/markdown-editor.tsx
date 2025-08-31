@@ -52,8 +52,8 @@ export default function MarkdownEditor(): JSX.Element {
 
   return (
     <div className="h-full p-4">
-      <section className="card p-0 overflow-hidden">
-        <div className="flex items-center justify-between border-b px-3 py-2">
+      <section className="card p-0 overflow-hidden h-full flex flex-col min-h-0">
+        <div className="flex items-center justify-between border-b px-3 py-2 shrink-0">
           <input
             value={active.title}
             onChange={(e) => updateCapsule(active.id, { title: e.target.value })}
@@ -62,10 +62,10 @@ export default function MarkdownEditor(): JSX.Element {
             aria-label="Document title"
           />
         </div>
-        <div data-color-mode="auto" className="px-0">
+        <div data-color-mode="auto" className="px-0 flex-1 min-h-0">
           <MDEditor
             value={value}
-            height={"70vh"}
+            height="100%"
             onChange={(val) => setValue(val || "")}
             visibleDragbar={false}
             // Start in edit-only; users can toggle preview/preview-only from toolbar (eye icon)

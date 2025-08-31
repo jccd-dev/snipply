@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { useLibraryStore, type Folder } from "@/store/library";
-import { Folder as FolderIcon, CaretRight, Plus } from "@phosphor-icons/react";
+import { FolderIcon, CaretRightIcon, PlusIcon } from "@phosphor-icons/react";
 
-function FolderItem({ folder }: { folder: Folder }): JSX.Element {
+function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
   const { renameFolder, capsules, moveCapsuleToFolder, setActiveCapsule } = useLibraryStore();
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
@@ -37,9 +37,9 @@ function FolderItem({ folder }: { folder: Folder }): JSX.Element {
           type="button"
           aria-label={open ? "Collapse folder" : "Expand folder"}
           onClick={() => setOpen((v) => !v)}
-          className="size-6 grid place-items-center rounded-md hover:bg-black/[.05] dark:hover:bg-white/[.06]"
+          className="size-6 grid place-items-center rounded-md hover:bg-muted"
         >
-          <CaretRight size={14} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
+          <CaretRightIcon size={14} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
         </button>
         <FolderIcon size={16} className="opacity-80" />
         {editing ? (
@@ -64,7 +64,7 @@ function FolderItem({ folder }: { folder: Folder }): JSX.Element {
           {items.map((c) => (
             <button
               key={c.id}
-              className="w-full text-left px-3 py-2 text-sm rounded-md bg-black/[.03] dark:bg-white/[.04] hover:bg-black/[.06] dark:hover:bg-white/[.08]"
+              className="w-full text-left px-3 py-2 text-sm rounded-md bg-background border border-border hover:bg-muted"
               draggable
               onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
               onClick={() => setActiveCapsule(c.id)}
@@ -81,7 +81,7 @@ function FolderItem({ folder }: { folder: Folder }): JSX.Element {
   );
 }
 
-function OrphanList(): JSX.Element | null {
+function OrphanList(): React.ReactElement | null {
   const { capsules, moveCapsuleToFolder, setActiveCapsule } = useLibraryStore();
   const items = capsules.filter((c) => c.folderId === null);
 
@@ -99,7 +99,7 @@ function OrphanList(): JSX.Element | null {
         {items.map((c) => (
           <button
             key={c.id}
-            className="w-full text-left px-3 py-2 text-sm rounded-md bg-black/[.03] dark:bg-white/[.04] hover:bg-black/[.06] dark:hover:bg-white/[.08]"
+            className="w-full text-left px-3 py-2 text-sm rounded-md bg-background border border-border hover:bg-muted"
             draggable
             onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
             onClick={() => setActiveCapsule(c.id)}
@@ -112,7 +112,7 @@ function OrphanList(): JSX.Element | null {
   );
 }
 
-export default function RightSidebar(): JSX.Element {
+export default function RightSidebar(): React.ReactElement {
   const { folders, addFolder, addCapsule, moveCapsuleToFolder } = useLibraryStore();
 
   const onSidebarDrop: React.DragEventHandler<HTMLElement> = (e) => {
@@ -124,7 +124,7 @@ export default function RightSidebar(): JSX.Element {
 
   return (
     <aside
-      className="w-full border-l border-[var(--border)] bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-[calc(100vh-56px)] sticky top-14 p-3 space-y-3 overflow-y-auto"
+      className="w-full border-l border-border bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-[calc(100vh-56px)] sticky top-14 p-3 space-y-3 overflow-y-auto"
       onDragOver={(e) => e.preventDefault()}
       onDrop={onSidebarDrop}
     >
@@ -132,15 +132,15 @@ export default function RightSidebar(): JSX.Element {
         <div className="text-sm font-semibold">Library</div>
         <div className="ms-auto flex gap-1.5">
           <button
-            className="size-8 grid place-items-center rounded-md hover:bg-black/[.05] dark:hover:bg-white/[.06]"
+            className="size-8 grid place-items-center rounded-md hover:bg-muted"
             aria-label="New Doc"
             title="New Doc"
             onClick={() => addCapsule("Untitled", null)}
           >
-            <Plus size={16} />
+            <PlusIcon size={16} />
           </button>
           <button
-            className="size-8 grid place-items-center rounded-md hover:bg-black/[.05] dark:hover:bg-white/[.06]"
+            className="size-8 grid place-items-center rounded-md hover:bg-muted"
             aria-label="New Folder"
             title="New Folder"
             onClick={() => addFolder("New Folder")}

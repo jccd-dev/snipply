@@ -1,47 +1,49 @@
-"use client";
-import React from "react";
-import { Sidebar, useSidebar } from "@/components/ui/sidebar";
-import Link from "next/link";
+"use client"
 
-const nav = [
-  { label: "Overview", icon: "M4 6h16M4 12h16M4 18h16", href: "/" },
-  { label: "Docs", icon: "M6 4h12v16H6z", href: "/docs" },
-  { label: "Components", icon: "M4 8h16M4 16h16", href: "#" },
-  { label: "Settings", icon: "M12 8a4 4 0 100 8 4 4 0 000-8z", href: "#" },
-];
+import * as React from "react"
+import { SquareTerminal } from "lucide-react"
 
-export function AppSidebar() {
-  const { collapsed } = useSidebar();
+import { NavMain } from "@/components/nav-main"
+// Removed NavProjects and TeamSwitcher to eliminate placeholder sections
+// import { NavProjects } from "@/components/nav-projects"
+// import { TeamSwitcher } from "@/components/team-switcher"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarRail,
+} from "@/components/ui/sidebar"
+
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  // Build minimal, real navigation tied to existing routes
+  const navItems: Parameters<typeof NavMain>[0]["items"] = [
+    {
+      title: "App",
+      url: "#",
+      icon: SquareTerminal,
+      isActive: true,
+      items: [
+        { title: "Home", url: "/" },
+        { title: "Dashboard", url: "/dashboard" },
+        { title: "Docs", url: "/docs" },
+      ],
+    },
+  ]
+
   return (
-    <Sidebar>
-      <div className="flex h-16 items-center gap-2 p-3">
-        <div className="size-9 rounded-xl bg-black/90 dark:bg-white/90 grid place-items-center text-white dark:text-black shadow-sm">S</div>
-        {!collapsed && <div className="font-semibold">Snipply</div>}
-      </div>
-      <nav className="px-2 pb-4">
-        {nav.map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            className="smooth flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-black/[.05] dark:hover:bg-white/[.06]"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="opacity-80"
-            >
-              <path d={item.icon} />
-            </svg>
-            <span className={collapsed ? "sr-only" : ""}>{item.label}</span>
-          </Link>
-        ))}
-      </nav>
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader>
+        {/* Minimal brand placeholder without extra UI */}
+        <div className="px-2 text-sm font-semibold tracking-tight">Snipply</div>
+      </SidebarHeader>
+      <SidebarContent>
+        <NavMain items={navItems} />
+        {/* Removed <NavProjects /> to avoid placeholder content */}
+      </SidebarContent>
+      {/* Preserve the footer area for future authentication integration */}
+      <SidebarFooter>{/* Intentionally left empty */}</SidebarFooter>
+      <SidebarRail />
     </Sidebar>
-  );
+  )
 }

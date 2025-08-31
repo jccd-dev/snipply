@@ -92,7 +92,7 @@ export default function CapsulesBoard() {
                   key={id}
                   draggable
                   onDragStart={(e) => onDragStart(e, id)}
-                  className={`tab-chip smooth px-3 py-1.5 text-xs ${dragId === id ? "opacity-60 scale-[.98]" : "hover:shadow-sm"}`}
+                  className={`tab-chip smooth px-3 py-1.5 text-xs ${dragId === id ? "opacity-60 scale-[.98]" : ""}`}
                   title={capsules[id]?.title}
                 >
                   {capsules[id]?.title}
@@ -124,7 +124,7 @@ export default function CapsulesBoard() {
               key={id}
               draggable
               onDragStart={(e) => onDragStart(e, id)}
-              className={`tab-chip smooth px-3 py-1.5 text-xs ${dragId === id ? "opacity-60 scale-[.98]" : "hover:shadow-sm"}`}
+              className={`tab-chip smooth px-3 py-1.5 text-xs ${dragId === id ? "opacity-60 scale-[.98]" : ""}`}
               title={capsules[id]?.title}
             >
               {capsules[id]?.title}
