@@ -3,11 +3,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useMemo } from "react";
+import { pickColorDeterministic } from "@/theme/palette"; // centralized pastel palette
 
 export type Folder = {
   id: string;
   name: string;
   createdAt: number;
+  // Hex color string from the centralized pastel palette
+  color: string;
 };
 
 export type Capsule = {
@@ -17,6 +20,8 @@ export type Capsule = {
   content: string;
   createdAt: number;
   updatedAt: number;
+  // Hex color string derived from folder when inside a folder; null for unsorted
+  color: string | null;
 };
 
 export type LibraryState = {
@@ -56,13 +61,14 @@ export const useLibraryStore = create<LibraryState>()(
           content: initialDoc,
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          color: null,
         },
       ],
       activeCapsuleId: null,
 
       addFolder: (name = "New Folder") => {
         const id = uid("fld");
-        const folder: Folder = { id, name, createdAt: Date.now() };
+        const folder: Folder = { id, name, createdAt: Date.now(), color: pickColorDeterministic(id) };
         set((s) => ({ folders: [folder, ...s.folders] }));
         return id;
       },
@@ -73,11 +79,13 @@ export const useLibraryStore = create<LibraryState>()(
       removeFolder: (id) =>
         set((s) => ({
           folders: s.folders.filter((f) => f.id !== id),
-          capsules: s.capsules.map((c) => (c.folderId === id ? { ...c, folderId: null } : c)),
+          capsules: s.capsules.map((c) => (c.folderId === id ? { ...c, folderId: null, color: null } : c)),
         })),
 
       addCapsule: (title = "Untitled", folderId: string | null = null) => {
         const id = uid("cap");
+        const s = get();
+        const folderColor: string | null = folderId ? (s.folders.find((f) => f.id === folderId)?.color ?? null) : null;
         const cap: Capsule = {
           id,
           title,
@@ -85,6 +93,7 @@ export const useLibraryStore = create<LibraryState>()(
           content: "",
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          color: folderColor,
         };
         set((s) => ({ capsules: [cap, ...s.capsules], activeCapsuleId: id }));
         return id;
@@ -104,9 +113,16 @@ export const useLibraryStore = create<LibraryState>()(
         })),
 
       moveCapsuleToFolder: (capsuleId, folderId) =>
-        set((s) => ({
-          capsules: s.capsules.map((c) => (c.id === capsuleId ? { ...c, folderId, updatedAt: Date.now() } : c)),
-        })),
+        set((s) => {
+          const destColor: string | null = folderId ? (s.folders.find((f) => f.id === folderId)?.color ?? null) : null;
+          return {
+            capsules: s.capsules.map((c) =>
+              c.id === capsuleId
+                ? { ...c, folderId, color: destColor, updatedAt: Date.now() }
+                : c
+            ),
+          };
+        }),
 
       setActiveCapsule: (id) => set({ activeCapsuleId: id }),
     }),
@@ -117,7 +133,33 @@ export const useLibraryStore = create<LibraryState>()(
         capsules: state.capsules,
         activeCapsuleId: state.activeCapsuleId,
       }),
-      version: 1,
+      version: 2,
+      migrate: (persisted: any, fromVersion: number) => {
+        if (!persisted) return persisted;
+        if (fromVersion < 2) {
+          const folders = Array.isArray(persisted.folders)
+            ? persisted.folders.map((f: any) => ({
+                id: f.id,
+                name: f.name,
+                createdAt: f.createdAt,
+                color: pickColorDeterministic(f.id),
+              }))
+            : [];
+          const capsules = Array.isArray(persisted.capsules)
+            ? persisted.capsules.map((c: any) => ({
+                id: c.id,
+                title: c.title,
+                folderId: c.folderId ?? null,
+                content: c.content ?? "",
+                createdAt: c.createdAt ?? Date.now(),
+                updatedAt: c.updatedAt ?? Date.now(),
+                color: c.folderId ? pickColorDeterministic(c.folderId) : null,
+              }))
+            : [];
+          return { ...persisted, folders, capsules };
+        }
+        return persisted;
+      },
     }
   )
 );

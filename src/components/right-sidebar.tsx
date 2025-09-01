@@ -24,9 +24,13 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
 
   const items = capsules.filter((c) => c.folderId === folder.id);
 
+  // Use folder hex color directly via CSS custom property
+  const folderStyle = { ["--folder-accent" as any]: folder.color } as React.CSSProperties;
+
   return (
     <div
-      className="card px-2 pt-2 pb-1"
+      className={["card px-2 pt-2 pb-1"].join(" ")}
+      style={{ ...folderStyle, borderColor: "var(--folder-accent)" }}
       onDragOver={onDragOver}
       onDrop={onDrop}
       aria-label={`Folder ${folder.name}`}
@@ -41,7 +45,10 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
         >
           <CaretRightIcon size={14} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
         </button>
-        <FolderIcon size={16} className="opacity-80" />
+        <span className="inline-flex items-center gap-1.5">
+          <span className="folder-accent-dot" />
+          <FolderIcon size={16} className="opacity-80" />
+        </span>
         {editing ? (
           <input
             value={name}
@@ -58,20 +65,32 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
             {folder.name}
           </button>
         )}
+        {/* Removed manual color selectors for consistent automatic palette */}
       </div>
       {open && (
         <div className="flex flex-col gap-1">
-          {items.map((c) => (
-            <button
-              key={c.id}
-              className="w-full text-left px-3 py-2 text-sm rounded-md bg-background border border-border hover:bg-muted"
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
-              onClick={() => setActiveCapsule(c.id)}
-            >
-              {c.title || "Untitled"}
-            </button>
-          ))}
+          {items.map((c) => {
+            const capColor = c.color ?? folder.color; // store ensures equality, fallback safe
+            const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
+            return (
+              <div key={c.id} className={["group/cap relative"].join(" ")}> 
+                <button
+                  className={["cap-item w-full text-left pr-20"].join(" ")}
+                  style={capStyle}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
+                  onClick={() => setActiveCapsule(c.id)}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {capColor && (
+                      <span className="size-2 rounded-full" style={{ background: "var(--cap-accent)" }} />
+                    )}
+                    {c.title || "Untitled"}
+                  </span>
+                </button>
+              </div>
+            );
+          })}
           {items.length === 0 && (
             <div className="text-xs text-muted-foreground px-3 py-2">Drop docs here</div>
           )}
@@ -96,17 +115,28 @@ function OrphanList(): React.ReactElement | null {
   return (
     <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} aria-label="Documents">
       <div className="flex flex-col gap-1">
-        {items.map((c) => (
-          <button
-            key={c.id}
-            className="w-full text-left px-3 py-2 text-sm rounded-md bg-background border border-border hover:bg-muted"
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
-            onClick={() => setActiveCapsule(c.id)}
-          >
-            {c.title || "Untitled"}
-          </button>
-        ))}
+        {items.map((c) => {
+          const capColor = c.color; // unsorted should be null -> no accent
+          const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
+          return (
+            <div key={c.id} className={["group/cap relative"].join(" ")}> 
+              <button
+                className={["cap-item w-full text-left pr-20 text-sm"].join(" ")}
+                style={capStyle}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
+                onClick={() => setActiveCapsule(c.id)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {capColor && (
+                    <span className="size-2 rounded-full" style={{ background: "var(--cap-accent)" }} />
+                  )}
+                  {c.title || "Untitled"}
+                </span>
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

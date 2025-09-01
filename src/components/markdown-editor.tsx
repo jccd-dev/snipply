@@ -31,6 +31,17 @@ export default function MarkdownEditor(): JSX.Element {
   const active = useActiveCapsule();
   const updateCapsule = useLibraryStore((s) => s.updateCapsule);
   const [value, setValue] = React.useState<string>(active?.content ?? "");
+  const [isDark, setIsDark] = React.useState<boolean>(false);
+
+  // Track the current theme from the root html class so the editor follows app theme
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setIsDark(root.classList.contains("dark"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   React.useEffect(() => {
     setValue(active?.content ?? "");
@@ -62,21 +73,27 @@ export default function MarkdownEditor(): JSX.Element {
             aria-label="Document title"
           />
         </div>
-        <div data-color-mode="auto" className="px-0 flex-1 min-h-0">
-          <MDEditor
-            value={value}
-            height="100%"
-            onChange={(val) => setValue(val || "")}
-            visibleDragbar={false}
-            // Start in edit-only; users can toggle preview/preview-only from toolbar (eye icon)
-            preview="edit"
-            previewOptions={{
-              remarkPlugins: [remarkGfm, remarkMath, [remarkFootnotes, { inlineNotes: true }], [remarkToc, { tight: true, ordered: false, fromHeading: 2, toHeading: 6 }]],
-              rehypePlugins: [rehypeKatex, rehypeHighlight, rehypeSlug, [rehypeAutolinkHeadings, { behavior: "wrap" }]],
-            }}
-            textareaProps={{ placeholder: "Write your Markdown here..." }}
-          />
-          <MermaidInPreview content={value} />
+        <div data-color-mode={isDark ? "dark" : "light"} className="px-0 flex-1 min-h-0 editor-scope">
+           <MDEditor
+             value={value}
+             height="100%"
+             onChange={(val) => setValue(val || "")}
+             visibleDragbar={false}
+             // Start in edit-only; users can toggle preview/preview-only from toolbar (eye icon)
+             preview="edit"
+             previewOptions={{
+               remarkPlugins: [remarkGfm, remarkMath, [remarkFootnotes, { inlineNotes: true }], [remarkToc, { tight: true, ordered: false, fromHeading: 2, toHeading: 6 }]],
+               rehypePlugins: [rehypeKatex, rehypeHighlight, rehypeSlug, [rehypeAutolinkHeadings, { behavior: "wrap" }]],
+             }}
+             textareaProps={{
+               placeholder: "Write your Markdown here...",
+               style: {
+                 color: "var(--foreground)",
+                 WebkitTextFillColor: "var(--foreground)",
+               },
+             }}
+           />
+           <MermaidInPreview content={value} />
         </div>
       </section>
     </div>

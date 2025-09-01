@@ -97,13 +97,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --muted: #1e1e1e;
-    --border: rgba(255,255,255,0.12);
-    --soft-shadow: none;
-  }
-}
+/* Removed OS-level dark scheme overrides so the .dark class fully controls theme tokens. This fixes light mode borders and hover backgrounds. */
 
 html, body, #__next { width: 100%; height: 100%; }
 body { overflow-x: hidden; }
@@ -174,3 +168,130 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Markdown Editor (uiw) theme overrides mapped to our design tokens */
+.w-md-editor {
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.w-md-editor .w-md-editor-toolbar {
+  background: var(--card);
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+.w-md-editor .w-md-editor-toolbar ul li button {
+  color: inherit;
+  border-radius: 6px;
+}
+
+.w-md-editor .w-md-editor-toolbar ul li button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.w-md-editor .w-md-editor-content,
+.w-md-editor .w-md-editor-text,
+.w-md-editor .w-md-editor-text-pre,
+.w-md-editor .w-md-editor-text-input {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+/* Markdown preview area */
+.wmde-markdown {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.wmde-markdown a { color: var(--primary); }
+
+/* Code blocks and inline code */
+.wmde-markdown pre,
+.w-md-editor .w-md-editor-content .w-md-editor-text-pre {
+  background: var(--secondary);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Ensure highlight.js code element doesn’t reintroduce dark background */
+.wmde-markdown pre code.hljs {
+  background: transparent;
+}
+
+.wmde-markdown code:not(pre code) {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+}
+
+/* Tables, blockquotes, separators */
+.wmde-markdown table { border-color: var(--border); }
+.wmde-markdown th, .wmde-markdown td { border-color: var(--border); }
+.wmde-markdown blockquote {
+  border-left: 3px solid var(--border);
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+}
+.wmde-markdown hr { border-color: var(--border); }
+
+/* Scope: make sure any editor container forces readable text */
+.editor-scope, [data-color-mode] .w-md-editor {
+  color: var(--foreground) !important;
+}
+.w-md-editor .w-md-editor-text-input::placeholder {
+  color: var(--muted-foreground);
+}
+.w-md-editor .w-md-editor-text-input {
+  caret-color: var(--foreground);
+  -webkit-text-fill-color: var(--foreground) !important;
+  text-shadow: none !important;
+}
+
+/* NEW: Force nested overlay text to visible regardless of library defaults */
+.w-md-editor .w-md-editor-text-pre code,
+.w-md-editor .w-md-editor-text-pre span,
+.w-md-editor .w-md-editor-text-pre * {
+  color: var(--foreground) !important;
+  -webkit-text-fill-color: var(--foreground) !important;
+  text-shadow: none !important;
+}
+
+/* Accent utility tokens used by RightSidebar */
+.accent-badge { width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
+.accent-ring { box-shadow: 0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent); }
+
+/* Capsule visual enhancements */
+/* Use --cap-accent for capsule accent color and --folder-accent for folder headers */
+.cap-item {
+  position: relative;
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+.cap-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 0;
+  border-left: 3px solid color-mix(in oklab, var(--cap-accent, transparent) 65%, transparent);
+  pointer-events: none;
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
+}
+.cap-item:hover {
+  background: color-mix(in oklab, var(--cap-accent, transparent) 12%, var(--background));
+  border-color: color-mix(in oklab, var(--cap-accent, var(--border)) 40%, var(--border));
+}
+
+/* Folder header accent indicator */
+.folder-accent-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--folder-accent); }
+.accent-ring { box-shadow: 0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent); }
