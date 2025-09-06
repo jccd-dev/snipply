@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { SquareTerminal } from "lucide-react"
+import Image from "next/image"
+import { HouseIcon, AppWindowIcon, PresentationChartIcon } from "@phosphor-icons/react"
 
 import { NavMain } from "@/components/nav-main"
 // Removed NavProjects and TeamSwitcher to eliminate placeholder sections
@@ -19,23 +20,39 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Build minimal, real navigation tied to existing routes
   const navItems: Parameters<typeof NavMain>[0]["items"] = [
     {
-      title: "App",
-      url: "#",
-      icon: SquareTerminal,
-      isActive: true,
-      items: [
-        { title: "Home", url: "/" },
-        { title: "Dashboard", url: "/dashboard" },
-        { title: "Docs", url: "/docs" },
-      ],
+    title: "Home",
+    url: "/",
+    icon: HouseIcon,
+    },
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: PresentationChartIcon,
+    },
+    {
+      title: "Capsules",
+      url: "/docs",
+      icon: AppWindowIcon,
     },
   ]
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        {/* Minimal brand placeholder without extra UI */}
-        <div className="px-2 text-sm font-semibold tracking-tight">Snipply</div>
+        {/* Brand: logo + wordmark (Outfit) */}
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <Image
+            src="/logo01.png"
+            alt="Snipply logo"
+            width={22}
+            height={22}
+            priority
+            className="rounded-sm"
+          />
+          <span className="brand-title text-sm tracking-tight group-data-[collapsible=icon]/sidebar-wrapper:hidden">
+            Snipply
+          </span>
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} />

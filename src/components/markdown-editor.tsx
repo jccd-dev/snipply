@@ -79,21 +79,11 @@ export default function MarkdownEditor(): JSX.Element {
              height="100%"
              onChange={(val) => setValue(val || "")}
              visibleDragbar={false}
-             // Start in edit-only; users can toggle preview/preview-only from toolbar (eye icon)
-             preview="edit"
-             previewOptions={{
-               remarkPlugins: [remarkGfm, remarkMath, [remarkFootnotes, { inlineNotes: true }], [remarkToc, { tight: true, ordered: false, fromHeading: 2, toHeading: 6 }]],
-               rehypePlugins: [rehypeKatex, rehypeHighlight, rehypeSlug, [rehypeAutolinkHeadings, { behavior: "wrap" }]],
-             }}
+             preview="preview"
              textareaProps={{
                placeholder: "Write your Markdown here...",
-               style: {
-                 color: "var(--foreground)",
-                 WebkitTextFillColor: "var(--foreground)",
-               },
              }}
            />
-           <MermaidInPreview content={value} />
         </div>
       </section>
     </div>

@@ -62,6 +62,9 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* New brand fonts */
+  --font-outfit: var(--font-outfit);
+  --font-poppins: var(--font-poppins);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -105,8 +108,18 @@ body { overflow-x: hidden; }
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
+
+/* Headings and display titles use Outfit */
+h1, h2, h3, h4, h5, h6, .font-display, .brand-title {
+  font-family: var(--font-outfit), ui-sans-serif, system-ui;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Paragraphs default to Poppins (already on body). Explicit utility for clarity */
+p, .prose p { font-family: var(--font-poppins), system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial; }
 
 /* Reusable UI primitives */
 .card {
@@ -169,101 +182,6 @@ body {
   }
 }
 
-/* Markdown Editor (uiw) theme overrides mapped to our design tokens */
-.w-md-editor {
-  background: var(--card);
-  color: var(--foreground);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.w-md-editor .w-md-editor-toolbar {
-  background: var(--card);
-  color: var(--muted-foreground);
-  border-bottom: 1px solid var(--border);
-}
-
-.w-md-editor .w-md-editor-toolbar ul li button {
-  color: inherit;
-  border-radius: 6px;
-}
-
-.w-md-editor .w-md-editor-toolbar ul li button:hover {
-  background: var(--muted);
-  color: var(--foreground);
-}
-
-.w-md-editor .w-md-editor-content,
-.w-md-editor .w-md-editor-text,
-.w-md-editor .w-md-editor-text-pre,
-.w-md-editor .w-md-editor-text-input {
-  background: var(--card);
-  color: var(--foreground);
-}
-
-/* Markdown preview area */
-.wmde-markdown {
-  background: var(--card);
-  color: var(--foreground);
-}
-
-.wmde-markdown a { color: var(--primary); }
-
-/* Code blocks and inline code */
-.wmde-markdown pre,
-.w-md-editor .w-md-editor-content .w-md-editor-text-pre {
-  background: var(--secondary);
-  color: var(--foreground);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-/* Ensure highlight.js code element doesn’t reintroduce dark background */
-.wmde-markdown pre code.hljs {
-  background: transparent;
-}
-
-.wmde-markdown code:not(pre code) {
-  background: var(--secondary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1rem 0.3rem;
-}
-
-/* Tables, blockquotes, separators */
-.wmde-markdown table { border-color: var(--border); }
-.wmde-markdown th, .wmde-markdown td { border-color: var(--border); }
-.wmde-markdown blockquote {
-  border-left: 3px solid var(--border);
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
-}
-.wmde-markdown hr { border-color: var(--border); }
-
-/* Scope: make sure any editor container forces readable text */
-.editor-scope, [data-color-mode] .w-md-editor {
-  color: var(--foreground) !important;
-}
-.w-md-editor .w-md-editor-text-input::placeholder {
-  color: var(--muted-foreground);
-}
-.w-md-editor .w-md-editor-text-input {
-  caret-color: var(--foreground);
-  -webkit-text-fill-color: var(--foreground) !important;
-  text-shadow: none !important;
-}
-
-/* NEW: Force nested overlay text to visible regardless of library defaults */
-.w-md-editor .w-md-editor-text-pre code,
-.w-md-editor .w-md-editor-text-pre span,
-.w-md-editor .w-md-editor-text-pre * {
-  color: var(--foreground) !important;
-  -webkit-text-fill-color: var(--foreground) !important;
-  text-shadow: none !important;
-}
-
 /* Accent utility tokens used by RightSidebar */
 .accent-badge { width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
 .accent-ring { box-shadow: 0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent); }
@@ -295,3 +213,16 @@ body {
 /* Folder header accent indicator */
 .folder-accent-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--folder-accent); }
 .accent-ring { box-shadow: 0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent); }
+
+
+/* Light Mode */
+[data-color-mode="light"] .wmde-markdown-var {
+  --w-md-editor-background-color: var(--background); /* Match app background */
+  --w-md-editor-text-color: var(--foreground); /* Match app text color */
+}
+
+/* Dark Mode */
+[data-color-mode="dark"] .wmde-markdown-var {
+  --w-md-editor-background-color: var(--background); /* Match app background */
+  --w-md-editor-text-color: var(--foreground); /* Match app text color */
+}

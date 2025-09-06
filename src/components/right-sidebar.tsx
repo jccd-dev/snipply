@@ -29,23 +29,23 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
 
   return (
     <div
-      className={["card px-2 pt-2 pb-1"].join(" ")}
+      className={["card w-full px-2 pt-2 pb-1 overflow-hidden"].join(" ")}
       style={{ ...folderStyle, borderColor: "var(--folder-accent)" }}
       onDragOver={onDragOver}
       onDrop={onDrop}
       aria-label={`Folder ${folder.name}`}
       aria-expanded={open}
     >
-      <div className="flex items-center gap-2 mb-1.5">
+      <div className="flex items-center gap-2 mb-1.5 min-w-0">
         <button
           type="button"
           aria-label={open ? "Collapse folder" : "Expand folder"}
           onClick={() => setOpen((v) => !v)}
-          className="size-6 grid place-items-center rounded-md hover:bg-muted"
+          className="size-6 grid place-items-center rounded-md hover:bg-muted shrink-0"
         >
           <CaretRightIcon size={14} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
         </button>
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-1.5 shrink-0">
           <span className="folder-accent-dot" />
           <FolderIcon size={16} className="opacity-80" />
         </span>
@@ -57,11 +57,11 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
               renameFolder(folder.id, name.trim() || "New Folder");
               setEditing(false);
             }}
-            className="bg-transparent focus:outline-none text-sm font-medium"
+            className="bg-transparent focus:outline-none text-sm font-medium truncate min-w-0 flex-1"
             autoFocus
           />
         ) : (
-          <button className="text-left text-sm font-medium" onClick={() => setEditing(true)}>
+          <button className="text-left text-sm font-medium truncate min-w-0 flex-1" onClick={() => setEditing(true)}>
             {folder.name}
           </button>
         )}
@@ -73,19 +73,21 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
             const capColor = c.color ?? folder.color; // store ensures equality, fallback safe
             const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
             return (
-              <div key={c.id} className={["group/cap relative"].join(" ")}> 
+              <div key={c.id} className={["group/cap relative"].join(" ")}>
                 <button
-                  className={["cap-item w-full text-left pr-20"].join(" ")}
+                  className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
                   style={capStyle}
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
                   onClick={() => setActiveCapsule(c.id)}
                 >
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2 min-w-0 w-full">
                     {capColor && (
-                      <span className="size-2 rounded-full" style={{ background: "var(--cap-accent)" }} />
+                      <span className="size-2 rounded-full shrink-0" style={{ background: "var(--cap-accent)" }} />
                     )}
-                    {c.title || "Untitled"}
+                     <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
+                       {c.title || "Untitled"}
+                     </span>
                   </span>
                 </button>
               </div>
@@ -119,21 +121,23 @@ function OrphanList(): React.ReactElement | null {
           const capColor = c.color; // unsorted should be null -> no accent
           const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
           return (
-            <div key={c.id} className={["group/cap relative"].join(" ")}> 
+            <div key={c.id} className={["group/cap relative"].join(" ")}>
               <button
-                className={["cap-item w-full text-left pr-20 text-sm"].join(" ")}
+                className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
                 style={capStyle}
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
                 onClick={() => setActiveCapsule(c.id)}
               >
-                <span className="inline-flex items-center gap-2">
+                <span className="flex items-center gap-2 min-w-0 w-full">
                   {capColor && (
-                    <span className="size-2 rounded-full" style={{ background: "var(--cap-accent)" }} />
+                    <span className="size-2 rounded-full shrink-0" style={{ background: "var(--cap-accent)" }} />
                   )}
-                  {c.title || "Untitled"}
+                  <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
+                    {c.title || "Untitled"}
+                  </span>
                 </span>
-              </button>
+                </button>
             </div>
           );
         })}
@@ -154,7 +158,7 @@ export default function RightSidebar(): React.ReactElement {
 
   return (
     <aside
-      className="w-full border-l border-border bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-[calc(100vh-56px)] sticky top-14 p-3 space-y-3 overflow-y-auto"
+      className="w-full border-l border-border bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-[calc(100vh-56px)] sticky top-14 p-3 space-y-3 overflow-y-auto overflow-x-hidden"
       onDragOver={(e) => e.preventDefault()}
       onDrop={onSidebarDrop}
     >
