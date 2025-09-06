@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
-@import "highlight.js/styles/github-dark.min.css";
+@import "katex/dist/katex.min.css";
 @import "@uiw/react-md-editor/markdown-editor.css";
 @import "@uiw/react-markdown-preview/markdown.css";
 @import "tw-animate-css";
@@ -215,14 +215,111 @@ p, .prose p { font-family: var(--font-poppins), system-ui, -apple-system, Segoe 
 .accent-ring { box-shadow: 0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent); }
 
 
-/* Light Mode */
-[data-color-mode="light"] .wmde-markdown-var {
-  --w-md-editor-background-color: var(--background); /* Match app background */
-  --w-md-editor-text-color: var(--foreground); /* Match app text color */
+/*
+  Markdown Editor Theme & Fixes
+  - Aligns editor/toolbar/preview colors with app theme.
+  - Fixes list markers (bullets/numbers) and spacing.
+  - Fixes checkbox alignment and prevents them from breaking list styles.
+  - Makes toolbar scrollable on mobile.
+*/
+
+/* Theme Overrides */
+[data-color-mode='light'] {
+  --w-md-editor-background: var(--card);
+  --w-md-editor-text-color: var(--foreground);
+  --w-md-editor-border-color: var(--border);
+  --w-md-editor-toolbar-background: var(--card);
+  --w-md-editor-toolbar-color: var(--muted-foreground);
+  --w-md-editor-toolbar-active-color: var(--primary);
+  --w-md-editor-toolbar-hover-background: var(--secondary);
+  --w-md-editor-preview-background: var(--card);
 }
 
-/* Dark Mode */
-[data-color-mode="dark"] .wmde-markdown-var {
-  --w-md-editor-background-color: var(--background); /* Match app background */
-  --w-md-editor-text-color: var(--foreground); /* Match app text color */
+[data-color-mode='dark'] {
+  --w-md-editor-background: var(--card);
+  --w-md-editor-text-color: var(--foreground);
+  --w-md-editor-border-color: var(--border);
+  --w-md-editor-toolbar-background: var(--card);
+  --w-md-editor-toolbar-color: var(--muted-foreground);
+  --w-md-editor-toolbar-active-color: var(--primary);
+  --w-md-editor-toolbar-hover-background: var(--secondary);
+  --w-md-editor-preview-background: var(--card);
+}
+
+/* Apply background to the preview-only component */
+.wmde-markdown {
+  background-color: var(--w-md-editor-preview-background, transparent) !important;
+  color: var(--w-md-editor-text-color, inherit) !important;
+}
+
+/* Force editor and preview backgrounds to match app theme */
+.editor-scope .w-md-editor,
+.editor-scope .w-md-editor-text-container,
+.editor-scope .w-md-editor-text,
+.editor-scope .w-md-editor-text-textarea,
+.editor-scope .w-md-editor-preview {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+}
+
+.editor-scope .w-md-editor-toolbar {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Headings: keep neutral colors (no blue) even when autolinked */
+.editor-scope .wmde-markdown h1,
+.editor-scope .wmde-markdown h2,
+.editor-scope .wmde-markdown h3,
+.editor-scope .wmde-markdown h4,
+.editor-scope .wmde-markdown h5,
+.editor-scope .wmde-markdown h6 {
+  color: var(--foreground);
+}
+.editor-scope .wmde-markdown h1 a,
+.editor-scope .wmde-markdown h2 a,
+.editor-scope .wmde-markdown h3 a,
+.editor-scope .wmde-markdown h4 a,
+.editor-scope .wmde-markdown h5 a,
+.editor-scope .wmde-markdown h6 a {
+  color: inherit;
+  text-decoration: none;
+}
+.editor-scope .wmde-markdown h1 a:hover,
+.editor-scope .wmde-markdown h2 a:hover,
+.editor-scope .wmde-markdown h3 a:hover,
+.editor-scope .wmde-markdown h4 a:hover,
+.editor-scope .wmde-markdown h5 a:hover,
+.editor-scope .wmde-markdown h6 a:hover,
+.editor-scope .wmde-markdown h1 a:focus-visible,
+.editor-scope .wmde-markdown h2 a:focus-visible,
+.editor-scope .wmde-markdown h3 a:focus-visible,
+.editor-scope .wmde-markdown h4 a:focus-visible,
+.editor-scope .wmde-markdown h5 a:focus-visible,
+.editor-scope .wmde-markdown h6 a:focus-visible {
+  color: inherit;
+  text-decoration: none;
+}
+
+.editor-scope .wmde-markdown ul {
+  list-style-type: disc;
+}
+
+.editor-scope .wmde-markdown ol {
+  list-style-type: decimal;
+}
+
+.editor-scope .wmde-markdown li {
+  display: list-item;
+}
+
+.editor-scope .wmde-markdown li.task-list-item {
+  list-style-type: none;
+  list-style-position: initial;
+}
+
+.editor-scope .wmde-markdown li.task-list-item > input[type="checkbox"] {
+  margin-left: -1.4rem;
+  margin-right: 0.4rem;
+  vertical-align: middle;
 }
