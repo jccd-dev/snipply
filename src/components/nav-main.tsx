@@ -40,6 +40,7 @@ export function NavMain({
     if (isMobile) setOpenMobile(false)
   }
 
+  // TODO: udpate the collapsible feature
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Navigation</SidebarGroupLabel>

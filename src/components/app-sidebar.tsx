@@ -14,15 +14,18 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
 } from "@/components/ui/sidebar"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Build minimal, real navigation tied to existing routes
   const navItems: Parameters<typeof NavMain>[0]["items"] = [
     {
-    title: "Home",
-    url: "/",
-    icon: HouseIcon,
+      title: "Home",
+      url: "/",
+      icon: HouseIcon,
     },
     {
       title: "Dashboard",
@@ -39,17 +42,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <Image
-            src="/logo01.png"
-            alt="Snipply logo"
-            width={24}
-            height={24}
-          />
-          <span className="brand-title text-sm tracking-tight group-data-[collapsible=icon]/sidebar-wrapper:hidden">
-            Snipply
-          </span>
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" tooltip="Snipply" asChild>
+              <div className="flex items-center gap-2">
+                <Image
+                  src="/logo01.png"
+                  alt="Snipply logo"
+                  width={24}
+                  height={24}
+
+                />
+                <span className="tracking-tight font-bold font-outfit">
+                  Snipply
+                </span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} />

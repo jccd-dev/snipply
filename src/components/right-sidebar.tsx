@@ -46,8 +46,7 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
           <CaretRightIcon size={14} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
         </button>
         <span className="inline-flex items-center gap-1.5 shrink-0">
-          <span className="folder-accent-dot" />
-          <FolderIcon size={16} className="opacity-80" />
+          <FolderIcon size={16} weight="fill" style={{ color: "var(--folder-accent)" }} />
         </span>
         {editing ? (
           <input
@@ -179,7 +178,7 @@ export default function RightSidebar(): React.ReactElement {
             title="New Folder"
             onClick={() => addFolder("New Folder")}
           >
-            <FolderIcon size={16} />
+            <FolderIcon size={16} weight="fill" />
           </button>
         </div>
       </div>

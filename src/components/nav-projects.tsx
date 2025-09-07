@@ -65,7 +65,8 @@ export function NavProjects({
                 align={isMobile ? "end" : "start"}
               >
                 <DropdownMenuItem>
-                  <Folder className="text-muted-foreground" />
+                  {/* Lucide icons are stroke-only; to simulate a filled folder, hide stroke and apply fill-current */}
+                  <Folder className="text-muted-foreground fill-current stroke-none" />
                   <span>View Project</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
