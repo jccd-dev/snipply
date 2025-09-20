@@ -1,4 +1,5 @@
-import { AppSidebar } from "@/components/app-sidebar"
+import { auth } from "@clerk/nextjs/server";
+import { AppSidebar } from "@/components/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -6,15 +7,21 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
-export default function Page() {
+export default async function Page() {
+  const { userId } = await auth();
+  if (!userId) {
+    // Rely on middleware to redirect unauthenticated users; render nothing to avoid flicker
+    return null;
+  }
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -51,5 +58,5 @@ export default function Page() {
         </div>
       </SidebarInset>
     </SidebarProvider>
-  )
+  );
 }
