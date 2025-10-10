@@ -70,3 +70,6 @@ No environment variables are required for local development.
 ## 📜 License
 
 This project is currently provided for personal use during development. A formal license will be added later.
+
+
+INSERT INTO "public"."User" ("id", "clerkUserId", "email", "firstName", "lastName", "imageUrl", "role", "createdAt", "updatedAt") VALUES ('cmftjb8uw00018sygaz9u29rw', 'user_330Ki2ySVDQqjCIXpcEq0PwrEcG', 'johncarlodigay24@gmail.com', 'John Carlo', 'Digay', 'https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18zMzBLaTJGdDM4QWZiSEdzbUpjV3lvZnAzOTQifQ', 'user', '2025-09-21 10:08:21.554', '2025-09-21 10:08:21.554');

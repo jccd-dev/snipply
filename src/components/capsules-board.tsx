@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { useLibraryStore } from "@/store/library";
 
 type Capsule = { id: string; title: string };
 interface Folder {
@@ -47,6 +48,33 @@ function useDemoData() {
   }
 
   return { capsules, folders, setFolders, unsorted, setUnsorted, moveCapsule };
+}
+
+import { useCallback } from "react";
+
+async function apiCreateCapsule(payload: { title?: string; content?: string; folderId?: string | null }) {
+  const res = await fetch("/api/capsules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { id: string; title: string; folderId: string | null; content: string };
+}
+
+async function apiUpdateCapsule(id: string, payload: Partial<{ title: string; content: string; folderId: string | null }>) {
+  const res = await fetch(`/api/capsules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { id: string };
+}
+
+async function apiDeleteCapsule(id: string) {
+  const res = await fetch(`/api/capsules/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(await res.text());
 }
 
 export default function CapsulesBoard() {

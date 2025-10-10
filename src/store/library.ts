@@ -37,6 +37,8 @@ export type LibraryState = {
   addCapsule: (title?: string, folderId?: string | null) => string;
   updateCapsule: (id: string, payload: Partial<Pick<Capsule, "title" | "content" | "folderId">>) => void;
   removeCapsule: (id: string) => void;
+  // New: commit server-issued ID for a newly created capsule
+  commitCapsuleId: (tempId: string, realId: string) => void;
 
   moveCapsuleToFolder: (capsuleId: string, folderId: string | null) => void;
 
@@ -110,6 +112,13 @@ export const useLibraryStore = create<LibraryState>()(
         set((s) => ({
           capsules: s.capsules.filter((c) => c.id !== id),
           activeCapsuleId: s.activeCapsuleId === id ? null : s.activeCapsuleId,
+        })),
+
+      // New: replace temp capsule ID with server ID
+      commitCapsuleId: (tempId, realId) =>
+        set((s) => ({
+          capsules: s.capsules.map((c) => (c.id === tempId ? { ...c, id: realId } : c)),
+          activeCapsuleId: s.activeCapsuleId === tempId ? realId : s.activeCapsuleId,
         })),
 
       moveCapsuleToFolder: (capsuleId, folderId) =>

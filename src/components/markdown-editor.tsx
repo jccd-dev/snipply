@@ -26,12 +26,24 @@ function MermaidInPreview({ content }: { content: string }) {
   return null;
 }
 
+// API helper for PATCH
+async function apiUpdateCapsule(id: string, payload: Partial<{ title: string; content: string; folderId: string | null }>) {
+  const res = await fetch(`/api/capsules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { id: string };
+}
+
 export default function MarkdownEditor(): React.ReactElement {
   const active = useActiveCapsule();
   const updateCapsule = useLibraryStore((s) => s.updateCapsule);
   const [value, setValue] = React.useState<string>(active?.content ?? "");
   const [isDark, setIsDark] = React.useState<boolean>(false);
   const [showPreview, setShowPreview] = React.useState<boolean>(false);
+  const titleDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track the current theme from the root html class so the editor follows app theme
   React.useEffect(() => {
@@ -49,7 +61,11 @@ export default function MarkdownEditor(): React.ReactElement {
 
   React.useEffect(() => {
     if (!active?.id) return;
-    const t = setTimeout(() => updateCapsule(active.id, { content: value }), 300);
+    const t = setTimeout(() => {
+      updateCapsule(active.id, { content: value });
+      // persist to server (best-effort)
+      apiUpdateCapsule(active.id, { content: value }).catch((err) => console.error(err));
+    }, 300);
     return () => clearTimeout(t);
   }, [value, active?.id, updateCapsule]);
 
@@ -92,7 +108,16 @@ export default function MarkdownEditor(): React.ReactElement {
         <div className="flex items-center justify-between border-b px-3 py-2 shrink-0 gap-2">
           <input
             value={active.title}
-            onChange={(e) => updateCapsule(active.id, { title: e.target.value })}
+            onChange={(e) => {
+              const next = e.target.value;
+              // optimistic local update
+              updateCapsule(active.id, { title: next });
+              // debounce server PATCH
+              if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+              titleDebounceRef.current = setTimeout(() => {
+                apiUpdateCapsule(active.id, { title: next }).catch((err) => console.error(err));
+              }, 400);
+            }}
             className="bg-transparent focus:outline-none text-sm font-medium w-full"
             placeholder="Document title"
             aria-label="Document title"
