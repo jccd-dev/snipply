@@ -12,7 +12,7 @@ const CapsuleCreateSchema = z.object({
 type Err = { error: string };
 
 async function ensureDbUser() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return { status: 401 as const, body: { error: "Unauthorized" } satisfies Err };
 
   const existing = await prisma.user.findUnique({ where: { clerkUserId: userId } });

@@ -10,7 +10,7 @@ const FolderUpdateSchema = z.object({
 });
 
 async function requireUserId() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return { status: 401 as const, body: { error: "Unauthorized" } satisfies Err };
   const dbUser = await prisma.user.findUnique({ where: { clerkUserId: userId } });
   if (!dbUser) return { status: 403 as const, body: { error: "User not provisioned" } satisfies Err };

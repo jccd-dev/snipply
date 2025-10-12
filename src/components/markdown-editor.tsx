@@ -10,6 +10,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import remarkFrontmatter from "remark-frontmatter";
 import katex from "katex";
 import "highlight.js/styles/github-dark.css";
+import { useAuth } from "@clerk/nextjs";
 
 function MermaidInPreview({ content }: { content: string }) {
   React.useEffect(() => {
@@ -32,6 +33,7 @@ async function apiUpdateCapsule(id: string, payload: Partial<{ title: string; co
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string };
@@ -44,6 +46,7 @@ export default function MarkdownEditor(): React.ReactElement {
   const [isDark, setIsDark] = React.useState<boolean>(false);
   const [showPreview, setShowPreview] = React.useState<boolean>(false);
   const titleDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { isSignedIn } = useAuth();
 
   // Track the current theme from the root html class so the editor follows app theme
   React.useEffect(() => {
@@ -61,13 +64,19 @@ export default function MarkdownEditor(): React.ReactElement {
 
   React.useEffect(() => {
     if (!active?.id) return;
+    if (!isSignedIn) return; // skip autosave while signed out
+
+    // Prevent updating capsules that were just created (race condition guard)
+    const isRecentlyCreated = Date.now() - active.createdAt < 1000;
+    if (isRecentlyCreated && !active.content) return;
+
     const t = setTimeout(() => {
       updateCapsule(active.id, { content: value });
       // persist to server (best-effort)
       apiUpdateCapsule(active.id, { content: value }).catch((err) => console.error(err));
     }, 300);
     return () => clearTimeout(t);
-  }, [value, active?.id, updateCapsule]);
+  }, [value, active?.id, updateCapsule, isSignedIn]);
 
   if (!active) {
     return (

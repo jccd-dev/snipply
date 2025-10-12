@@ -3,8 +3,27 @@ import { AppSidebar } from "@/components/app-sidebar";
 import MarkdownEditor from "@/components/markdown-editor";
 import RightSidebar from "@/components/right-sidebar";
 import ThemeToggle from "@/components/theme-toggle";
+import { auth } from "@clerk/nextjs/server";
+import { SignInButton } from "@clerk/nextjs";
+import { Button } from "@/components/ui/button";
 
-export default function DocsPage() {
+export default async function DocsPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold text-foreground">Welcome to Snipply</h1>
+          <p className="text-muted-foreground">Please sign in to access your documentation</p>
+          <SignInButton mode="modal">
+            <Button>Sign In</Button>
+          </SignInButton>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full overflow-x-hidden">

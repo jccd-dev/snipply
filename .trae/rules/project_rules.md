@@ -80,3 +80,5 @@
 - Implement exhaustive type checking
 - Avoid type assertions unless necessary
 - Use readonly modifiers when applicable
+
+- Im the one will run the server dont run after every change

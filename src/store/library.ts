@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { useMemo } from "react";
 import { pickColorDeterministic } from "@/theme/palette"; // centralized pastel palette
 
@@ -51,9 +50,7 @@ function uid(prefix = "id"): string {
 
 const initialDoc = `# Welcome to Snipply\n\nStart writing your documentation in Markdown.\n\n- Use the right sidebar to organize docs into folders.\n- Click a capsule to open it here.\n\n## Tips\n- Supports GitHub Flavored Markdown (tables, checklists).\n- Use the toolbar to insert common syntax.\n`;
 
-export const useLibraryStore = create<LibraryState>()(
-  persist(
-    (set, get) => ({
+export const useLibraryStore = create<LibraryState>()((set, get) => ({
       folders: [],
       capsules: [
         {
@@ -134,44 +131,7 @@ export const useLibraryStore = create<LibraryState>()(
         }),
 
       setActiveCapsule: (id) => set({ activeCapsuleId: id }),
-    }),
-    {
-      name: "snipply-library",
-      partialize: (state) => ({
-        folders: state.folders,
-        capsules: state.capsules,
-        activeCapsuleId: state.activeCapsuleId,
-      }),
-      version: 2,
-      migrate: (persisted: any, fromVersion: number) => {
-        if (!persisted) return persisted;
-        if (fromVersion < 2) {
-          const folders = Array.isArray(persisted.folders)
-            ? persisted.folders.map((f: any) => ({
-                id: f.id,
-                name: f.name,
-                createdAt: f.createdAt,
-                color: pickColorDeterministic(f.id),
-              }))
-            : [];
-          const capsules = Array.isArray(persisted.capsules)
-            ? persisted.capsules.map((c: any) => ({
-                id: c.id,
-                title: c.title,
-                folderId: c.folderId ?? null,
-                content: c.content ?? "",
-                createdAt: c.createdAt ?? Date.now(),
-                updatedAt: c.updatedAt ?? Date.now(),
-                color: c.folderId ? pickColorDeterministic(c.folderId) : null,
-              }))
-            : [];
-          return { ...persisted, folders, capsules };
-        }
-        return persisted;
-      },
-    }
-  )
-);
+}));
 
 export function useActiveCapsule(): Capsule | null {
   const activeId = useLibraryStore((s) => s.activeCapsuleId);

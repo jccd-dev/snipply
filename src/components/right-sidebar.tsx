@@ -4,6 +4,7 @@ import * as React from "react";
 import { useLibraryStore, type Folder } from "@/store/library";
 import { FolderIcon, CaretRightIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { pickColorDeterministic } from "@/theme/palette";
+import { useAuth } from "@clerk/nextjs";
 
 // API helpers
 async function apiCreateCapsule(payload: { title?: string; content?: string; folderId?: string | null }) {
@@ -11,6 +12,7 @@ async function apiCreateCapsule(payload: { title?: string; content?: string; fol
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string; title: string; folderId: string | null; content: string };
@@ -21,6 +23,7 @@ async function apiUpdateCapsule(id: string, payload: Partial<{ title: string; co
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string };
@@ -32,6 +35,7 @@ async function apiCreateFolder(payload: { id?: string; name?: string }) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string; name: string; createdAt: string };
@@ -42,6 +46,7 @@ async function apiUpdateFolder(id: string, payload: { name?: string }) {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string; name: string };
@@ -49,13 +54,13 @@ async function apiUpdateFolder(id: string, payload: { name?: string }) {
 
 // New: DELETE API helpers
 async function apiDeleteCapsule(id: string) {
-  const res = await fetch(`/api/capsules/${id}`, { method: "DELETE" });
+  const res = await fetch(`/api/capsules/${id}`, { method: "DELETE", credentials: "include" });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string };
 }
 
 async function apiDeleteFolder(id: string) {
-  const res = await fetch(`/api/folders/${id}`, { method: "DELETE" });
+  const res = await fetch(`/api/folders/${id}`, { method: "DELETE", credentials: "include" });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string };
 }
@@ -204,7 +209,7 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
                     }
                   }}
                 >
-                  <Trash size={12} />
+                  <TrashIcon size={12} />
                 </button>
               </div>
             );
@@ -271,18 +276,21 @@ function OrphanList(): React.ReactElement | null {
 
 export default function RightSidebar(): React.ReactElement {
   const { folders, capsules, addFolder, addCapsule, moveCapsuleToFolder, setActiveCapsule, removeCapsule, removeFolder, commitCapsuleId } = useLibraryStore();
+  const { isSignedIn } = useAuth();
 
   // Initial server data hydration (once)
   const hydratedRef = React.useRef(false);
   React.useEffect(() => {
+    if (!isSignedIn) return; // skip while signed out
     if (hydratedRef.current) return;
     const looksEmpty = folders.length === 0 || (capsules.length === 1 && (capsules[0]?.title ?? "") === "Getting Started");
     if (!looksEmpty) return;
     (async () => {
       try {
-        const res = await fetch("/api/library", { cache: "no-store" });
+        const res = await fetch("/api/library", { cache: "no-store", credentials: "include" });
+        if (res.status === 401) return; // signed out; do not log error
         if (!res.ok) return;
-        const data = (await res.json()) as { folders: Array<{ id: string; name: string; createdAt: string }>; capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>; };
+        const data = (await res.json()) as { folders: Array<{ id: string; name: string; createdAt: string }>; capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }> };
         const serverFolders: Folder[] = data.folders.map((f) => ({ id: f.id, name: f.name, createdAt: new Date(f.createdAt).getTime(), color: pickColorDeterministic(f.id) }));
         const serverCapsules = data.capsules.map((c) => ({ id: c.id, title: c.title, folderId: c.folderId, content: c.content, createdAt: new Date(c.createdAt).getTime(), updatedAt: new Date(c.updatedAt).getTime(), color: c.folderId ? pickColorDeterministic(c.folderId) : null }));
         useLibraryStore.setState({ folders: serverFolders, capsules: serverCapsules, activeCapsuleId: serverCapsules[0]?.id ?? null });
@@ -291,7 +299,7 @@ export default function RightSidebar(): React.ReactElement {
         console.error("Failed to hydrate library", e);
       }
     })();
-  }, [folders.length, capsules.length]);
+  }, [isSignedIn, folders.length, capsules.length]);
 
   const onSidebarDrop: React.DragEventHandler<HTMLElement> = async (e) => {
     const id = e.dataTransfer.getData("text/plain");
