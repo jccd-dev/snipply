@@ -27,6 +27,9 @@ export type LibraryState = {
   folders: Folder[];
   capsules: Capsule[];
   activeCapsuleId: string | null;
+  // mutation state for UX
+  mutationsInFlight: number;
+  isMutating: boolean;
 
   // actions
   addFolder: (name?: string) => string;
@@ -42,6 +45,8 @@ export type LibraryState = {
   moveCapsuleToFolder: (capsuleId: string, folderId: string | null) => void;
 
   setActiveCapsule: (id: string | null) => void;
+  beginMutation: () => void;
+  endMutation: () => void;
 };
 
 function uid(prefix = "id"): string {
@@ -64,6 +69,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
         },
       ],
       activeCapsuleId: null,
+      mutationsInFlight: 0,
+      isMutating: false,
 
       addFolder: (name = "New Folder") => {
         const id = uid("fld");
@@ -131,6 +138,12 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
         }),
 
       setActiveCapsule: (id) => set({ activeCapsuleId: id }),
+      beginMutation: () => set((s) => ({ mutationsInFlight: s.mutationsInFlight + 1, isMutating: true })),
+      endMutation: () =>
+        set((s) => {
+          const next = Math.max(0, s.mutationsInFlight - 1);
+          return { mutationsInFlight: next, isMutating: next > 0 };
+        }),
 }));
 
 export function useActiveCapsule(): Capsule | null {

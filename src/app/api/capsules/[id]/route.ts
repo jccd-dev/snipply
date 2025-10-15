@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (ensured.status !== 200) return Response.json(ensured.body, { status: ensured.status });
   const dbUser = ensured.user;
 
-  const id = await params.id;
+  const id = params.id;
   if (!id) return Response.json({ error: "Missing id" } satisfies Err, { status: 400 });
 
   // Check ownership
@@ -75,7 +75,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
 
   try {
     await prisma.capsule.delete({ where: { id } });
-    return Response.json({} as const, { status: 204 });
+    return Response.json({ id }, { status: 200 });
   } catch (e) {
     console.error("Delete capsule error", e);
     return Response.json({ error: "Failed to delete capsule" } satisfies Err, { status: 500 });

@@ -42,6 +42,7 @@ async function apiUpdateCapsule(id: string, payload: Partial<{ title: string; co
 export default function MarkdownEditor(): React.ReactElement {
   const active = useActiveCapsule();
   const updateCapsule = useLibraryStore((s) => s.updateCapsule);
+  const isMutating = useLibraryStore((s) => s.isMutating);
   const [value, setValue] = React.useState<string>(active?.content ?? "");
   const [isDark, setIsDark] = React.useState<boolean>(false);
   const [showPreview, setShowPreview] = React.useState<boolean>(false);
@@ -80,8 +81,15 @@ export default function MarkdownEditor(): React.ReactElement {
 
   if (!active) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        Select or create a document from the right sidebar.
+      <div className="relative h-full">
+        {isMutating && (
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-sm grid place-items-center" aria-live="polite" aria-busy="true">
+            <div className="size-8 rounded-full border-2 border-muted border-t-transparent animate-spin" />
+          </div>
+        )}
+        <div className="flex h-full items-center justify-center text-muted-foreground">
+          Select or create a document from the right sidebar.
+        </div>
       </div>
     );
   }
@@ -112,7 +120,7 @@ export default function MarkdownEditor(): React.ReactElement {
   };
 
   return (
-    <div className="h-full p-4">
+    <div className="relative h-full p-4" aria-busy={isMutating}>
       <section className="card p-0 overflow-hidden h-full flex flex-col min-h-0">
         <div className="flex items-center justify-between border-b px-3 py-2 shrink-0 gap-2">
           <input
@@ -154,6 +162,11 @@ export default function MarkdownEditor(): React.ReactElement {
           data-color-mode={isDark ? "dark" : "light"}
           className="px-0 flex-1 min-h-0 editor-scope wmde-markdown-var"
         >
+          {isMutating && (
+            <div className="absolute inset-0 bg-background/60 backdrop-blur-sm grid place-items-center" aria-live="polite">
+              <div className="size-8 rounded-full border-2 border-muted border-t-transparent animate-spin" />
+            </div>
+          )}
           {!showPreview ? (
             <MDEditor
               value={value}

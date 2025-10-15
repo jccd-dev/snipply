@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import QueryProvider from "@/components/query-provider";
 import { Geist, Geist_Mono, Outfit, Poppins } from "next/font/google";
 import "./globals.css";
 
@@ -54,7 +55,7 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} ${poppins.variable} antialiased`}
         >
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </body>
       </html>
     </ClerkProvider>
