@@ -9,7 +9,7 @@ async function ensureDbUser() {
   if (!userId) return { status: 401 as const, body: { error: "Unauthorized" } satisfies Err };
 
   const existing = await prisma.user.findUnique({ where: { clerkUserId: userId } });
-  if (existing) return { status: 200 as const, user: existing };
+  if (existing) return { status: 200 as const, user: existing, isNew: false } as const;
 
   const cu = await currentUser();
   if (!cu) return { status: 401 as const, body: { error: "Unauthorized" } satisfies Err };
@@ -24,15 +24,32 @@ async function ensureDbUser() {
       role: (cu.publicMetadata?.role as string | undefined) ?? "user",
     },
   });
-  return { status: 200 as const, user: created };
+  return { status: 200 as const, user: created, isNew: true } as const;
 }
 
 export async function GET() {
   const ensured = await ensureDbUser();
   if (ensured.status !== 200) return NextResponse.json(ensured.body, { status: ensured.status });
   const dbUser = ensured.user;
+  const isNew = (ensured as { isNew?: boolean }).isNew === true;
 
   try {
+    if (isNew) {
+      // Only seed once at user provision time
+      const count = await prisma.capsule.count({ where: { userId: dbUser.id } });
+      if (count === 0) {
+        const gettingStartedContent = `# Getting Started\n\nWelcome to Snipply! This editor supports GitHub-flavored Markdown, KaTeX math, and Mermaid diagrams.\n\n## Basics\n- **Bold**: **text**\n- *Italic*: *text*\n- Inline code: \`const x = 1\`\n- Links: [Markdown Guide](https://www.markdownguide.org/basic-syntax/)\n\n## Lists\n- Item 1\n- Item 2\n\n## Table\n| Feature | Support |\n|--------|---------|\n| Markdown | ✅ |\n| KaTeX | ✅ |\n| Mermaid | ✅ |\n\n## KaTeX / Math\nInline: $E=mc^2$\n\nBlock math:\n$$\n\\int_{0}^{\\pi} \\sin x\\, dx = 2\n$$\n\n## Mermaid Diagram\n\n\`\`\`mermaid\ngraph TD\nA[Start] --> B{Choose}\nB -->|Yes| C[Do thing]\nB -->|No| D[Do other]\n\`\`\`\n\n## Tips\n- Use the toolbar to insert common syntax.\n- Toggle Preview to see formatted output.\n- Use Save/Cancel to control commits.`;
+        await prisma.capsule.create({
+          data: {
+            userId: dbUser.id,
+            folderId: null,
+            title: "Getting Started",
+            content: gettingStartedContent,
+          },
+        });
+      }
+    }
+
     const [folders, capsules] = await Promise.all([
       prisma.folder.findMany({ where: { userId: dbUser.id }, orderBy: { createdAt: "asc" } }),
       prisma.capsule.findMany({ where: { userId: dbUser.id }, orderBy: { createdAt: "asc" } }),

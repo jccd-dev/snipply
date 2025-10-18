@@ -30,11 +30,15 @@ export type LibraryState = {
   // mutation state for UX
   mutationsInFlight: number;
   isMutating: boolean;
+  // local-only folders pending server sync
+  pendingFolderIds: string[];
 
   // actions
   addFolder: (name?: string) => string;
   renameFolder: (id: string, name: string) => void;
   removeFolder: (id: string) => void;
+  markFolderPending: (id: string) => void;
+  clearFolderPending: (id: string) => void;
 
   addCapsule: (title?: string, folderId?: string | null) => string;
   updateCapsule: (id: string, payload: Partial<Pick<Capsule, "title" | "content" | "folderId">>) => void;
@@ -53,24 +57,13 @@ function uid(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-3)}`;
 }
 
-const initialDoc = `# Welcome to Snipply\n\nStart writing your documentation in Markdown.\n\n- Use the right sidebar to organize docs into folders.\n- Click a capsule to open it here.\n\n## Tips\n- Supports GitHub Flavored Markdown (tables, checklists).\n- Use the toolbar to insert common syntax.\n`;
-
 export const useLibraryStore = create<LibraryState>()((set, get) => ({
       folders: [],
-      capsules: [
-        {
-          id: uid("cap"),
-          title: "Getting Started",
-          folderId: null,
-          content: initialDoc,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          color: null,
-        },
-      ],
+      capsules: [],
       activeCapsuleId: null,
       mutationsInFlight: 0,
       isMutating: false,
+      pendingFolderIds: [],
 
       addFolder: (name = "New Folder") => {
         const id = uid("fld");
@@ -86,7 +79,13 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
         set((s) => ({
           folders: s.folders.filter((f) => f.id !== id),
           capsules: s.capsules.map((c) => (c.folderId === id ? { ...c, folderId: null, color: null } : c)),
+          pendingFolderIds: s.pendingFolderIds.filter((fid) => fid !== id),
         })),
+
+      markFolderPending: (id) =>
+        set((s) => (s.pendingFolderIds.includes(id) ? s : { pendingFolderIds: [id, ...s.pendingFolderIds] })),
+      clearFolderPending: (id) =>
+        set((s) => ({ pendingFolderIds: s.pendingFolderIds.filter((fid) => fid !== id) })),
 
       addCapsule: (title = "Untitled", folderId: string | null = null) => {
         const id = uid("cap");

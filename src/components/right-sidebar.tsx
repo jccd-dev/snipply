@@ -2,10 +2,14 @@
 
 import * as React from "react";
 import { useLibraryStore, type Folder } from "@/store/library";
-import { FolderIcon, CaretRightIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { FolderIcon, CaretRightIcon, PlusIcon, TrashIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { pickColorDeterministic } from "@/theme/palette";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError || (typeof err === "string" && err.toLowerCase().includes("failed to fetch"));
+}
 
 // API helpers
 async function apiCreateCapsule(payload: { title?: string; content?: string; folderId?: string | null }) {
@@ -14,6 +18,7 @@ async function apiCreateCapsule(payload: { title?: string; content?: string; fol
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     credentials: "include",
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string; title: string; folderId: string | null; content: string };
@@ -37,6 +42,7 @@ async function apiCreateFolder(payload: { id?: string; name?: string }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     credentials: "include",
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as { id: string; name: string; createdAt: string };
@@ -56,14 +62,48 @@ async function apiUpdateFolder(id: string, payload: { name?: string }) {
 // New: DELETE API helpers
 async function apiDeleteCapsule(id: string) {
   const res = await fetch(`/api/capsules/${id}`, { method: "DELETE", credentials: "include" });
-  if (!res.ok) throw new Error(await res.text());
-  return (await res.json()) as { id: string };
+  // Treat 204 and 404 as success to keep UI consistent for optimistic deletions
+  if (res.status === 204 || res.status === 404) {
+    return { id } as { id: string };
+  }
+  if (!res.ok) {
+    let msg = "";
+    try {
+      msg = await res.text();
+    } catch {
+      // ignore
+    }
+    throw new Error(msg || "Failed to delete capsule");
+  }
+  try {
+    const data = (await res.json()) as { id?: string };
+    return { id: data.id ?? id } as { id: string };
+  } catch {
+    return { id } as { id: string };
+  }
 }
 
 async function apiDeleteFolder(id: string) {
   const res = await fetch(`/api/folders/${id}`, { method: "DELETE", credentials: "include" });
-  if (!res.ok) throw new Error(await res.text());
-  return (await res.json()) as { id: string };
+  // Treat 204 and 404 as success to keep UI consistent for optimistic deletions
+  if (res.status === 204 || res.status === 404) {
+    return { id } as { id: string };
+  }
+  if (!res.ok) {
+    let msg = "";
+    try {
+      msg = await res.text();
+    } catch {
+      // ignore
+    }
+    throw new Error(msg || "Failed to delete folder");
+  }
+  try {
+    const data = (await res.json()) as { id?: string };
+    return { id: data.id ?? id } as { id: string };
+  } catch {
+    return { id } as { id: string };
+  }
 }
 
 // FolderItem component
@@ -86,14 +126,36 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
   const queryClient = useQueryClient();
   const updateCapsuleFolderMutation = useMutation({
     mutationFn: ({ id, folderId }: { id: string; folderId: string }) => apiUpdateCapsule(id, { folderId }),
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData<{
+        folders: Array<{ id: string; name: string; createdAt: string }>;
+        capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+      }>(["library"], (prev) => {
+        if (!prev) return prev;
+        const now = new Date().toISOString();
+        return {
+          ...prev,
+          capsules: prev.capsules.map((c) =>
+            c.id === variables.id ? { ...c, folderId: variables.folderId, updatedAt: now } : c
+          ),
+        };
+      });
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
 
   const deleteCapsuleMutation = useMutation({
     mutationFn: (id: string) => apiDeleteCapsule(id),
-    onSettled: () => queryClient.invalidateQueries({
-      queryKey: ['library']
-    })
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData<{
+        folders: Array<{ id: string; name: string; createdAt: string }>;
+        capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+      }>(["library"], (prev) => {
+        if (!prev) return prev;
+        return { ...prev, capsules: prev.capsules.filter((c) => c.id !== id) };
+      });
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] })
   })
   const [open, setOpen] = React.useState(true);
 
@@ -143,7 +205,10 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
     }
   };
 
-  const items = capsules.filter((c) => c.folderId === folder.id);
+  // Deduplicate by id to avoid duplicate key warnings
+  const items = Array.from(
+    new Map(capsules.filter((c) => c.folderId === folder.id).map((c) => [c.id, c])).values()
+  );
 
   // Use folder hex color directly via CSS custom property
   const folderStyle = { ["--folder-accent" as any]: folder.color } as React.CSSProperties;
@@ -221,6 +286,14 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
             try {
               // Use TanStack mutation ad-hoc
               const res = await apiDeleteFolder(folder.id);
+              // Update library cache to remove deleted folder
+              queryClient.setQueryData<{
+                folders: Array<{ id: string; name: string; createdAt: string }>;
+                capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+              }>(["library"], (prev) => {
+                if (!prev) return prev;
+                return { ...prev, folders: prev.folders.filter((f) => f.id !== folder.id) };
+              });
               queryClient.invalidateQueries({ queryKey: ["library"] });
               void res;
             } catch (err) {
@@ -255,6 +328,9 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
                      <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
                        {c.title || "Untitled"}
                      </span>
+                     {c.id.startsWith("cap_") && (
+                       <span className="text-[10px] text-amber-600">Pending sync</span>
+                     )}
                   </span>
                 </button>
                 {/* Delete capsule button (appears on hover) */}
@@ -305,13 +381,31 @@ function OrphanList(): React.ReactElement | null {
   const updateCapsuleFolderMutation = useMutation({
     mutationFn: ({ id, folderId }: { id: string; folderId: string | null }) =>
       apiUpdateCapsule(id, { folderId }),
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData<{
+        folders: Array<{ id: string; name: string; createdAt: string }>;
+        capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+      }>(["library"], (prev) => {
+        if (!prev) return prev;
+        const now = new Date().toISOString();
+        return {
+          ...prev,
+          capsules: prev.capsules.map((c) =>
+            c.id === variables.id ? { ...c, folderId: variables.folderId, updatedAt: now } : c
+          ),
+        };
+      });
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
   const deleteCapsuleMutation = useMutation({
     mutationFn: (id: string) => apiDeleteCapsule(id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
-  const items = capsules.filter((c) => c.folderId === null);
+  // Deduplicate by id to avoid duplicate key warnings
+  const items = Array.from(
+    new Map(capsules.filter((c) => c.folderId === null).map((c) => [c.id, c])).values()
+  );
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = async (e) => {
     e.preventDefault();
@@ -361,27 +455,10 @@ function OrphanList(): React.ReactElement | null {
                   <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
                     {c.title || "Untitled"}
                   </span>
+                  {c.id.startsWith("cap_") && (
+                    <span className="text-[10px] text-amber-600">Pending sync</span>
+                  )}
                 </span>
-                </button>
-                {/* Delete capsule button (appears on hover) for orphan docs */}
-                <button
-                  aria-label="Delete doc"
-                  title="Delete doc"
-                  className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition size-6 grid place-items-center rounded-md hover:bg-muted text-red-500"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const prevCaps = useLibraryStore.getState().capsules;
-                    useLibraryStore.getState().removeCapsule(c.id);
-                    try {
-                      await apiDeleteCapsule(c.id);
-                    } catch (err) {
-                      console.error(err);
-                      useLibraryStore.setState({ capsules: prevCaps });
-                    }
-                  }}
-                >
-                  <TrashIcon size={12} />
                 </button>
                 {/* Delete capsule button (appears on hover) for orphan docs */}
                 <button
@@ -419,6 +496,7 @@ export default function RightSidebar(): React.ReactElement {
   // Optimize store subscriptions - use selective subscriptions for better re-render performance
   const folders = useLibraryStore((s) => s.folders);
   const capsules = useLibraryStore((s) => s.capsules);
+  const pendingFolderIds = useLibraryStore((s) => s.pendingFolderIds);
   const addFolder = useLibraryStore((s) => s.addFolder);
   const addCapsule = useLibraryStore((s) => s.addCapsule);
   const moveCapsuleToFolder = useLibraryStore((s) => s.moveCapsuleToFolder);
@@ -426,6 +504,8 @@ export default function RightSidebar(): React.ReactElement {
   const removeCapsule = useLibraryStore((s) => s.removeCapsule);
   const removeFolder = useLibraryStore((s) => s.removeFolder);
   const commitCapsuleId = useLibraryStore((s) => s.commitCapsuleId);
+  const markFolderPending = useLibraryStore((s) => s.markFolderPending);
+  const clearFolderPending = useLibraryStore((s) => s.clearFolderPending);
   const beginMutation = useLibraryStore((s) => s.beginMutation);
   const endMutation = useLibraryStore((s) => s.endMutation);
 
@@ -433,32 +513,211 @@ export default function RightSidebar(): React.ReactElement {
   const queryClient = useQueryClient();
 
   // Initial server data hydration (once)
-  const hydratedRef = React.useRef(false);
-  const looksEmpty = folders.length === 0 || (capsules.length === 1 && (capsules[0]?.title ?? "") === "Getting Started");
   const libraryQuery = useQuery({
     queryKey: ["library"],
-    enabled: isSignedIn && !hydratedRef.current && looksEmpty,
+    enabled: isSignedIn,
     queryFn: async () => {
       const res = await fetch("/api/library", { cache: "no-store", credentials: "include" });
       if (res.status === 401) return { folders: [], capsules: [] } as const;
       if (!res.ok) throw new Error(await res.text());
       return (await res.json()) as { folders: Array<{ id: string; name: string; createdAt: string }>; capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }> };
     },
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
   React.useEffect(() => {
-    if (!libraryQuery.data || hydratedRef.current) return;
-    const serverFolders: Folder[] = libraryQuery.data.folders.map((f) => ({ id: f.id, name: f.name, createdAt: new Date(f.createdAt).getTime(), color: pickColorDeterministic(f.id) }));
-    const serverCapsules = libraryQuery.data.capsules.map((c) => ({ id: c.id, title: c.title, folderId: c.folderId, content: c.content, createdAt: new Date(c.createdAt).getTime(), updatedAt: new Date(c.updatedAt).getTime(), color: c.folderId ? pickColorDeterministic(c.folderId) : null }));
-    useLibraryStore.setState({ folders: serverFolders, capsules: serverCapsules, activeCapsuleId: serverCapsules[0]?.id ?? null });
-    hydratedRef.current = true;
+    if (!libraryQuery.data) return;
+    const s = useLibraryStore.getState();
+
+    // Build server folders with deterministic colors
+    const serverFolders: Folder[] = libraryQuery.data.folders.map((f) => ({
+      id: f.id,
+      name: f.name,
+      createdAt: new Date(f.createdAt).getTime(),
+      color: pickColorDeterministic(f.id),
+    }));
+
+    // Merge folders: update names, add missing; optionally prune if not mutating
+    const curFoldersById = new Map(s.folders.map((f) => [f.id, f]));
+    const nextFolders: Folder[] = [];
+    for (const sf of serverFolders) {
+      const cur = curFoldersById.get(sf.id);
+      nextFolders.push(cur ? { ...cur, name: sf.name } : sf);
+      curFoldersById.delete(sf.id);
+    }
+    const shouldPruneFolders = s.mutationsInFlight === 0;
+    if (!shouldPruneFolders) {
+      // keep any local-only folders while mutating
+      nextFolders.push(...curFoldersById.values());
+    }
+
+    // Build server capsules with timestamps and derived colors
+    const serverCapsules = libraryQuery.data.capsules.map((c) => ({
+      id: c.id,
+      title: c.title,
+      folderId: c.folderId,
+      content: c.content,
+      createdAt: new Date(c.createdAt).getTime(),
+      updatedAt: new Date(c.updatedAt).getTime(),
+      color: c.folderId ? pickColorDeterministic(c.folderId) : null,
+    }));
+
+    // Merge capsules: prefer local when newer; add missing; optionally prune deletions
+    const curCapsById = new Map(s.capsules.map((c) => [c.id, c]));
+    const nextCapsules: typeof s.capsules = [];
+
+    for (const sc of serverCapsules) {
+      const cur = curCapsById.get(sc.id);
+      if (!cur) {
+        nextCapsules.push(sc);
+      } else {
+        const preferLocal = cur.updatedAt > sc.updatedAt || cur.id.startsWith("cap_");
+        const merged = preferLocal
+          ? { ...cur, color: sc.folderId ? pickColorDeterministic(sc.folderId) : null }
+          : sc;
+        nextCapsules.push(merged);
+        curCapsById.delete(sc.id);
+      }
+    }
+
+    const shouldPruneCapsules = s.mutationsInFlight === 0;
+    for (const [, cur] of curCapsById) {
+      // Keep local temp capsules and local-only while mutating; otherwise prune
+      if (cur.id.startsWith("cap_") || !shouldPruneCapsules) {
+        nextCapsules.push(cur);
+      }
+    }
+
+    const preserveActive = s.activeCapsuleId;
+    const nextActive = preserveActive && nextCapsules.some((c) => c.id === preserveActive)
+      ? preserveActive
+      : nextCapsules[0]?.id ?? null;
+
+    useLibraryStore.setState({ folders: nextFolders, capsules: nextCapsules, activeCapsuleId: nextActive });
   }, [libraryQuery.data]);
+
+  // Sync utilities with simple exponential backoff
+  const backoffRef = React.useRef<{ delay: number; timer: ReturnType<typeof setTimeout> | null }>({ delay: 2000, timer: null });
+  const syncPending = React.useCallback(async () => {
+    if (!isSignedIn) return;
+    const s = useLibraryStore.getState();
+    const qc = queryClient;
+    // Sync pending folders
+    for (const fid of s.pendingFolderIds) {
+      const f = s.folders.find((x) => x.id === fid);
+      if (!f) {
+        clearFolderPending(fid);
+        continue;
+      }
+      try {
+        const created = await apiCreateFolder({ id: f.id, name: f.name });
+        clearFolderPending(fid);
+        qc.setQueryData<{
+          folders: Array<{ id: string; name: string; createdAt: string }>;
+          capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+        }>(["library"], (prev) => {
+          if (!prev) return prev;
+          const exists = prev.folders.some((x) => x.id === created.id);
+          const nextFolders = exists ? prev.folders : [{ id: created.id, name: created.name, createdAt: created.createdAt ?? new Date().toISOString() }, ...prev.folders];
+          return { ...prev, folders: nextFolders };
+        });
+      } catch (err) {
+        if (!isNetworkError(err)) console.error(err);
+      }
+    }
+    // Sync temp capsules
+    for (const cap of s.capsules) {
+      if (!cap.id.startsWith("cap_")) continue;
+      try {
+        const created = await apiCreateCapsule({ title: cap.title || "Untitled", content: cap.content ?? "", folderId: cap.folderId ?? null });
+        commitCapsuleId(cap.id, created.id);
+        qc.setQueryData<{
+          folders: Array<{ id: string; name: string; createdAt: string }>;
+          capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+        }>(["library"], (prev) => {
+          if (!prev) return prev;
+          const now = new Date().toISOString();
+          return {
+            ...prev,
+            capsules: [{ id: created.id, title: created.title ?? "Untitled", content: created.content ?? "", folderId: created.folderId ?? null, createdAt: now, updatedAt: now }, ...prev.capsules.filter((c) => c.id !== cap.id)],
+          };
+        });
+      } catch (err) {
+        if (!isNetworkError(err)) console.error(err);
+      }
+    }
+  }, [commitCapsuleId, clearFolderPending, isSignedIn, queryClient]);
+
+  const scheduleBackoff = React.useCallback(() => {
+    const ref = backoffRef.current;
+    if (ref.timer) return; // already scheduled
+    ref.timer = setTimeout(async () => {
+      ref.timer = null;
+      await syncPending();
+      // If still pending, increase delay; else reset
+      const hasPending = useLibraryStore.getState().pendingFolderIds.length > 0 || useLibraryStore.getState().capsules.some((c) => c.id.startsWith("cap_"));
+      ref.delay = hasPending ? Math.min(ref.delay * 2, 60_000) : 2000;
+      if (hasPending) scheduleBackoff();
+    }, ref.delay);
+  }, [syncPending]);
+
+  React.useEffect(() => {
+    const onOnline = () => {
+      backoffRef.current.delay = 2000;
+      void syncPending();
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [syncPending]);
 
   const createCapsuleMutation = useMutation({
     mutationFn: apiCreateCapsule,
+    onSuccess: (created) => {
+      // Push new capsule into the library cache to reduce refetch cost
+      queryClient.setQueryData<{
+        folders: Array<{ id: string; name: string; createdAt: string }>;
+        capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+      }>(
+        ["library"],
+        (prev) => {
+          if (!prev) return prev;
+          const now = new Date().toISOString();
+          const nextCapsules = [
+            {
+              id: created.id,
+              title: created.title ?? "Untitled",
+              content: created.content ?? "",
+              folderId: created.folderId ?? null,
+              createdAt: now,
+              updatedAt: now,
+            },
+            ...prev.capsules,
+          ];
+          return { ...prev, capsules: nextCapsules };
+        }
+      );
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
   const createFolderMutation = useMutation({
     mutationFn: apiCreateFolder,
+    onSuccess: (created) => {
+      queryClient.setQueryData<{
+        folders: Array<{ id: string; name: string; createdAt: string }>;
+        capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+      }>(
+        ["library"],
+        (prev) => {
+          if (!prev) return prev;
+          const nextFolders = [
+            { id: created.id, name: created.name, createdAt: created.createdAt ?? new Date().toISOString() },
+            ...prev.folders,
+          ];
+          return { ...prev, folders: nextFolders };
+        }
+      );
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
 
@@ -516,8 +775,14 @@ export default function RightSidebar(): React.ReactElement {
                   }
                 }
               } catch (err) {
-                console.error(err);
-                removeCapsule(tempId);
+                // Keep local capsule on network error so user can continue and Save later
+                if (!isNetworkError(err)) {
+                  console.error(err);
+                  removeCapsule(tempId);
+                } else {
+                  setActiveCapsule(tempId);
+                  scheduleBackoff();
+                }
               } finally {
                 endMutation();
               }
@@ -534,18 +799,40 @@ export default function RightSidebar(): React.ReactElement {
               try {
                 await createFolderMutation.mutateAsync({ id: tempId, name: "New Folder" });
               } catch (err) {
-                console.error(err);
-                removeFolder(tempId);
+                // Keep local folder on network error; it will sync when connection resumes
+                if (!isNetworkError(err)) {
+                  console.error(err);
+                  removeFolder(tempId);
+                } else {
+                  markFolderPending(tempId);
+                  scheduleBackoff();
+                }
               }
             }}
           >
             <FolderIcon size={16} weight="fill" />
           </button>
+          <button
+            className="size-8 grid place-items-center rounded-md hover:bg-muted"
+            aria-label="Sync now"
+            title="Sync now"
+            onClick={() => {
+              backoffRef.current.delay = 2000;
+              void syncPending();
+            }}
+          >
+            <ArrowClockwiseIcon size={16} />
+          </button>
         </div>
       </div>
       <div className="grid gap-3">
         {folders.map((f) => (
-          <FolderItem key={f.id} folder={f} />
+          <div key={f.id} className="relative">
+            {pendingFolderIds.includes(f.id) && (
+              <span className="absolute right-2 top-1 text-[10px] text-amber-600">Pending sync</span>
+            )}
+            <FolderItem folder={f} />
+          </div>
         ))}
         {folders.length === 0 && (
           <div className="text-xs text-muted-foreground">Create a folder to organize your docs.</div>
