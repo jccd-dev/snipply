@@ -63,7 +63,8 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
 
   try {
     await prisma.folder.delete({ where: { id } });
-    return Response.json({} as const, { status: 204 });
+    // Return proper empty 204 No Content response (avoid JSON body for 204)
+    return new Response(null, { status: 204 });
   } catch (e) {
     console.error("Delete folder error", e);
     return Response.json({ error: "Failed to delete folder" } satisfies Err, { status: 500 });

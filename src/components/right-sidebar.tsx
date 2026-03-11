@@ -84,7 +84,7 @@ async function apiDeleteCapsule(id: string) {
 }
 
 async function apiDeleteFolder(id: string) {
-  const res = await fetch(`/api/folders/${id}`, { method: "DELETE", credentials: "include" });
+  const res = await fetch(`/api/folders/${id}`, { method: "DELETE", credentials: "include", cache: "no-store" });
   // Treat 204 and 404 as success to keep UI consistent for optimistic deletions
   if (res.status === 204 || res.status === 404) {
     return { id } as { id: string };
@@ -96,7 +96,9 @@ async function apiDeleteFolder(id: string) {
     } catch {
       // ignore
     }
-    throw new Error(msg || "Failed to delete folder");
+    const err: Error & { status?: number } = new Error(msg || "Failed to delete folder");
+    err.status = res.status;
+    throw err;
   }
   try {
     const data = (await res.json()) as { id?: string };
@@ -115,8 +117,15 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
   const setActiveCapsule = useLibraryStore((s) => s.setActiveCapsule);
   const removeCapsule = useLibraryStore((s) => s.removeCapsule);
   const removeFolder = useLibraryStore((s) => s.removeFolder);
+  const commitCapsuleId = useLibraryStore((s) => s.commitCapsuleId);
+  const markFolderPending = useLibraryStore((s) => s.markFolderPending);
+  const clearFolderPending = useLibraryStore((s) => s.clearFolderPending);
   const beginMutation = useLibraryStore((s) => s.beginMutation);
   const endMutation = useLibraryStore((s) => s.endMutation);
+  const customFolderOrder = useLibraryStore((s) => s.customFolderOrder);
+  const reorderFolder = useLibraryStore((s) => s.reorderFolder);
+  const customCapsuleOrder = useLibraryStore((s) => s.customCapsuleOrder);
+  const reorderCapsuleInFolder = useLibraryStore((s) => s.reorderCapsuleInFolder);
 
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
@@ -164,8 +173,19 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
     // Stop event bubbling immediately so the sidebar's onDrop doesn't also fire
     e.stopPropagation();
     setIsDragOver(false);
-    const id = e.dataTransfer.getData("text/plain");
-    if (!id) return;
+    const data = e.dataTransfer.getData("text/plain");
+    if (!data) return;
+    if (data.startsWith("folder:")) {
+      const sourceId = data.slice(7);
+      if (sourceId !== folder.id) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const isAfter = e.clientY > rect.top + rect.height / 2;
+        reorderFolder(sourceId, folder.id, isAfter ? "after" : "before");
+      }
+      return;
+    }
+    if (!data.startsWith("capsule:")) return;
+    const id = data.slice(8);
     const prevFolder = capsules.find((c) => c.id === id)?.folderId ?? null;
     if (prevFolder === folder.id) {
       // dropped into same folder, no-op
@@ -193,6 +213,7 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
   const onDragOver: React.DragEventHandler<HTMLDivElement> = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
     setIsDragOver(true);
   };
 
@@ -205,10 +226,11 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
     }
   };
 
-  // Deduplicate by id to avoid duplicate key warnings
-  const items = Array.from(
-    new Map(capsules.filter((c) => c.folderId === folder.id).map((c) => [c.id, c])).values()
-  );
+  // Ordered capsules using custom order, fallback to filtered order
+  const filteredCaps = capsules.filter((c) => c.folderId === folder.id);
+  const key = folder.id;
+  const orderIds = customCapsuleOrder[key] ?? filteredCaps.map((c) => c.id);
+  const items = orderIds.map((id) => filteredCaps.find((c) => c.id === id)!).filter(Boolean);
 
   // Use folder hex color directly via CSS custom property
   const folderStyle = { ["--folder-accent" as any]: folder.color } as React.CSSProperties;
@@ -226,7 +248,7 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
       aria-label={`Folder ${folder.name}`}
       aria-expanded={open}
     >
-      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+      <div className="flex items-center gap-2 mb-1.5 min-w-0 cursor-grab active:cursor-grabbing" draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", `folder:${folder.id}`)}>
         <button
           type="button"
           aria-label={open ? "Collapse folder" : "Expand folder"}
@@ -279,27 +301,40 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
           className="size-6 grid place-items-center rounded-md hover:bg-muted text-red-500"
           onClick={async (e) => {
             e.stopPropagation();
+            beginMutation();
             const prevFolders = useLibraryStore.getState().folders;
             const prevCaps = useLibraryStore.getState().capsules;
-            // optimistic remove: also detaches capsule.folderId via store logic
+            const prevCache = queryClient.getQueryData<{
+              folders: Array<{ id: string; name: string; createdAt: string }>;
+              capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+            }>(["library"]);
+            // Optimistic remove from store
             removeFolder(folder.id);
+            // Optimistically update query cache to prevent flicker
+            queryClient.setQueryData<{
+              folders: Array<{ id: string; name: string; createdAt: string }>;
+              capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+            }>(["library"], (prev) => {
+              if (!prev) return prev;
+              return { ...prev, folders: prev.folders.filter((f) => f.id !== folder.id) };
+            });
             try {
-              // Use TanStack mutation ad-hoc
-              const res = await apiDeleteFolder(folder.id);
-              // Update library cache to remove deleted folder
-              queryClient.setQueryData<{
-                folders: Array<{ id: string; name: string; createdAt: string }>;
-                capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
-              }>(["library"], (prev) => {
-                if (!prev) return prev;
-                return { ...prev, folders: prev.folders.filter((f) => f.id !== folder.id) };
-              });
+              await apiDeleteFolder(folder.id);
+              // Keep cache aligned and let background refetch reconcile
               queryClient.invalidateQueries({ queryKey: ["library"] });
-              void res;
             } catch (err) {
               console.error(err);
-              // rollback
-              useLibraryStore.setState({ folders: prevFolders, capsules: prevCaps });
+              // Roll back only when we are truly unauthorized; otherwise keep optimistic state
+              const status = (err as { status?: number }).status;
+              if (status === 401 || status === 403) {
+                // Restore cache and store on auth errors
+                if (prevCache) {
+                  queryClient.setQueryData(["library"], prevCache);
+                }
+                useLibraryStore.setState({ folders: prevFolders, capsules: prevCaps });
+              }
+            } finally {
+              endMutation();
             }
           }}
         >
@@ -313,12 +348,12 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
             const capColor = c.color ?? folder.color; // store ensures equality, fallback safe
             const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
             return (
-              <div key={c.id} className={["group/cap relative"].join(" ")}>
+              <div key={c.id} className={["group/cap relative"].join(" ")} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(folder.id, sourceId, c.id, isAfter ? "after" : "before"); }}>
                 <button
                   className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
                   style={capStyle}
                   draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", `capsule:${c.id}`)}
                   onClick={() => setActiveCapsule(c.id)}
                 >
                   <span className="flex items-center gap-2 min-w-0 w-full">
@@ -375,6 +410,8 @@ function OrphanList(): React.ReactElement | null {
   const setActiveCapsule = useLibraryStore((s) => s.setActiveCapsule);
   const beginMutation = useLibraryStore((s) => s.beginMutation);
   const endMutation = useLibraryStore((s) => s.endMutation);
+  const customCapsuleOrder = useLibraryStore((s) => s.customCapsuleOrder);
+  const reorderCapsuleInFolder = useLibraryStore((s) => s.reorderCapsuleInFolder);
 
   const queryClient = useQueryClient();
   // Add a mutation for moving capsules to uncategorized (sidebar drop)
@@ -402,17 +439,18 @@ function OrphanList(): React.ReactElement | null {
     mutationFn: (id: string) => apiDeleteCapsule(id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
-  // Deduplicate by id to avoid duplicate key warnings
-  const items = Array.from(
-    new Map(capsules.filter((c) => c.folderId === null).map((c) => [c.id, c])).values()
-  );
+  // Ordered unsorted capsules using custom order, fallback to filtered order
+  const filteredCaps = capsules.filter((c) => c.folderId === null);
+  const orderIds = customCapsuleOrder["unsorted"] ?? filteredCaps.map((c) => c.id);
+  const items = orderIds.map((id) => filteredCaps.find((c) => c.id === id)!).filter(Boolean);
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = async (e) => {
     e.preventDefault();
     // Prevent bubbling to the sidebar to avoid duplicate handlers
     e.stopPropagation();
-    const id = e.dataTransfer.getData("text/plain");
-    if (!id) return;
+    const data = e.dataTransfer.getData("text/plain");
+    if (!data || !data.startsWith("capsule:")) return;
+    const id = data.slice(8);
     const prevFolder = capsules.find((c) => c.id === id)?.folderId ?? null;
     beginMutation();
     moveCapsuleToFolder(id, null);
@@ -440,12 +478,12 @@ function OrphanList(): React.ReactElement | null {
           const capColor = c.color; // unsorted should be null -> no accent
           const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
           return (
-            <div key={c.id} className={["group/cap relative"].join(" ")}>
+            <div key={c.id} className={["group/cap relative"].join(" ")} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(null, sourceId, c.id, isAfter ? "after" : "before"); }}>
               <button
                 className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
                 style={capStyle}
                 draggable
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
+                onDragStart={(e) => e.dataTransfer.setData("text/plain", `capsule:${c.id}`)}
                 onClick={() => setActiveCapsule(c.id)}
               >
                 <span className="flex items-center gap-2 min-w-0 w-full">
@@ -508,9 +546,19 @@ export default function RightSidebar(): React.ReactElement {
   const clearFolderPending = useLibraryStore((s) => s.clearFolderPending);
   const beginMutation = useLibraryStore((s) => s.beginMutation);
   const endMutation = useLibraryStore((s) => s.endMutation);
+  const customFolderOrder = useLibraryStore((s) => s.customFolderOrder);
+  const reorderFolder = useLibraryStore((s) => s.reorderFolder);
 
   const { isSignedIn } = useAuth();
   const queryClient = useQueryClient();
+
+  // Compute ordered folders based on custom order with fallback to newest-first
+  const folderById = new Map(folders.map((f) => [f.id, f]));
+  const defaultOrderIds = folders.slice().sort((a, b) => b.createdAt - a.createdAt).map((f) => f.id);
+  const orderIds = customFolderOrder.length
+    ? [...customFolderOrder.filter((id) => folderById.has(id)), ...defaultOrderIds.filter((id) => !customFolderOrder.includes(id))]
+    : defaultOrderIds;
+  const orderedFolders = orderIds.map((id) => folderById.get(id)!);
 
   // Initial server data hydration (once)
   const libraryQuery = useQuery({
@@ -725,8 +773,9 @@ export default function RightSidebar(): React.ReactElement {
     e.preventDefault();
     // Ensure the drop does not bubble further
     e.stopPropagation();
-    const id = e.dataTransfer.getData("text/plain");
-    if (!id) return;
+    const data = e.dataTransfer.getData("text/plain");
+    if (!data || !data.startsWith("capsule:")) return;
+    const id = data.slice(8);
     const prevFolder = capsules.find((c) => c.id === id)?.folderId ?? null;
     // Dropping on the sidebar background removes the folder association (uncategorized)
     beginMutation();
@@ -826,7 +875,7 @@ export default function RightSidebar(): React.ReactElement {
         </div>
       </div>
       <div className="grid gap-3">
-        {folders.map((f) => (
+        {orderedFolders.map((f) => (
           <div key={f.id} className="relative">
             {pendingFolderIds.includes(f.id) && (
               <span className="absolute right-2 top-1 text-[10px] text-amber-600">Pending sync</span>
@@ -834,8 +883,17 @@ export default function RightSidebar(): React.ReactElement {
             <FolderItem folder={f} />
           </div>
         ))}
-        {folders.length === 0 && (
+        {orderedFolders.length === 0 && (
           <div className="text-xs text-muted-foreground">Create a folder to organize your docs.</div>
+        )}
+        {/* End-of-list drop zone to place folder at bottom */}
+        {orderedFolders.length > 0 && (
+          <div
+            className="h-6 mt-1 rounded-md border border-dashed border-muted-foreground/30"
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("folder:")) return; const sourceId = data.slice(7); const lastId = orderedFolders[orderedFolders.length - 1]?.id; if (!lastId || sourceId === lastId) return; reorderFolder(sourceId, lastId, "after"); }}
+            aria-label="Drop here to place folder at end"
+          />
         )}
       </div>
       <OrphanList />
