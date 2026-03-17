@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
+import { Show, UserButton } from "@clerk/nextjs"
 import ThemeToggle from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles, Files, ShieldCheck } from "lucide-react"
@@ -31,20 +31,20 @@ export default function Page() {
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            <SignedIn>
+            <Show when="signed-in">
               <Link href="/dashboard" className="hidden sm:inline-flex">
                 <Button size="sm" variant="default">Dashboard</Button>
               </Link>
               <UserButton afterSignOutUrl="/" />
-            </SignedIn>
-            <SignedOut>
+            </Show>
+            <Show when="signed-out">
               <Link href="/sign-in">
                 <Button size="sm" variant="ghost">Sign in</Button>
               </Link>
               <Link href="/sign-up" className="hidden sm:inline-flex">
                 <Button size="sm" variant="default">Sign up</Button>
               </Link>
-            </SignedOut>
+            </Show>
           </div>
         </div>
       </header>
@@ -67,22 +67,22 @@ export default function Page() {
               Snipply is a focused workspace for teams to capture ideas, code, and process docs — fast. Beautiful editor, flexible structure, and effortless sharing.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <SignedIn>
+              <Show when="signed-in">
                 <Link href="/dashboard">
                   <Button size="lg" className="group">
                     Go to Dashboard
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </Button>
                 </Link>
-              </SignedIn>
-              <SignedOut>
+              </Show>
+              <Show when="signed-out">
                 <Link href="/sign-up">
                   <Button size="lg" className="group">
                     Get started free
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </Button>
                 </Link>
-              </SignedOut>
+              </Show>
               <Link href="/docs">
                 <Button size="lg" variant="ghost">View Docs</Button>
               </Link>

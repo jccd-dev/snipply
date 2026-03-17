@@ -3,54 +3,32 @@ generator client {
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
-}
-
-model User {
-  id           String   @id @default(cuid())
-  clerkUserId  String   @unique
-  email        String?  @unique
-  firstName    String?
-  lastName     String?
-  imageUrl     String?
-  role         String   @default("user")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  folders      Folder[]
-  capsules     Capsule[]
+  provider = "postgresql"
 }
 
 model Folder {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  clerkUserId String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  capsules  Capsule[]
+  capsules Capsule[]
 
-  @@index([userId])
+  @@index([clerkUserId])
 }
 
 model Capsule {
-  id        String   @id @default(cuid())
-  userId    String
-  folderId  String?
-  title     String   @default("Untitled")
-  content   String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  clerkUserId String
+  folderId    String?
+  title       String   @default("Untitled")
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
-  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder   Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
-  @@index([userId])
+  @@index([clerkUserId])
   @@index([folderId])
 }

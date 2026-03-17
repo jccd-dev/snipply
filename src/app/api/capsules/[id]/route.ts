@@ -14,21 +14,19 @@ const CapsuleUpdateSchema = z.object({
 async function requireUserId() {
   const { userId } = await auth();
   if (!userId) return { status: 401 as const, body: { error: "Unauthorized" } satisfies Err };
-  const dbUser = await prisma.user.findUnique({ where: { clerkUserId: userId } });
-  if (!dbUser) return { status: 403 as const, body: { error: "User not provisioned" } satisfies Err };
-  return { status: 200 as const, user: dbUser };
+  return { status: 200 as const, userId };
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const ensured = await requireUserId();
   if (ensured.status !== 200) return Response.json(ensured.body, { status: ensured.status });
-  const dbUser = ensured.user;
+  const userId = ensured.userId;
 
   const id = params.id;
   if (!id) return Response.json({ error: "Missing id" } satisfies Err, { status: 400 });
 
   // Check ownership
-  const existing = await prisma.capsule.findFirst({ where: { id, userId: dbUser.id } });
+  const existing = await prisma.capsule.findFirst({ where: { id, clerkUserId: userId } });
   if (!existing) return Response.json({ error: "Capsule not found" } satisfies Err, { status: 404 });
 
   // Validate input
@@ -42,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // If moving between folders, ensure destination belongs to user
   if (input.folderId !== undefined && input.folderId !== null) {
-    const folder = await prisma.folder.findFirst({ where: { id: input.folderId, userId: dbUser.id } });
+    const folder = await prisma.folder.findFirst({ where: { id: input.folderId, clerkUserId: userId } });
     if (!folder) return Response.json({ error: "Folder not found" } satisfies Err, { status: 404 });
   }
 
@@ -65,12 +63,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   const ensured = await requireUserId();
   if (ensured.status !== 200) return Response.json(ensured.body, { status: ensured.status });
-  const dbUser = ensured.user;
+  const userId = ensured.userId;
 
   const id = params.id;
   if (!id) return Response.json({ error: "Missing id" } satisfies Err, { status: 400 });
 
-  const existing = await prisma.capsule.findFirst({ where: { id, userId: dbUser.id } });
+  const existing = await prisma.capsule.findFirst({ where: { id, clerkUserId: userId } });
   if (!existing) return Response.json({ error: "Capsule not found" } satisfies Err, { status: 404 });
 
   try {
