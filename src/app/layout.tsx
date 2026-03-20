@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import QueryProvider from "@/components/query-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { Geist, Geist_Mono, Outfit, Poppins } from "next/font/google";
 import "./globals.css";
 
@@ -55,7 +56,10 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} ${poppins.variable} antialiased`}
         >
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            {children}
+            <Toaster richColors closeButton />
+          </QueryProvider>
         </body>
       </html>
     </ClerkProvider>

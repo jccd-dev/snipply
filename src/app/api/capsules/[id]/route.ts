@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 type Err = { error: string };
@@ -17,12 +17,12 @@ async function requireUserId() {
   return { status: 200 as const, userId };
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ensured = await requireUserId();
   if (ensured.status !== 200) return Response.json(ensured.body, { status: ensured.status });
   const userId = ensured.userId;
 
-  const id = params.id;
+  const { id } = await params;
   if (!id) return Response.json({ error: "Missing id" } satisfies Err, { status: 400 });
 
   // Check ownership
@@ -60,12 +60,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ensured = await requireUserId();
   if (ensured.status !== 200) return Response.json(ensured.body, { status: ensured.status });
   const userId = ensured.userId;
 
-  const id = params.id;
+  const { id } = await params;
   if (!id) return Response.json({ error: "Missing id" } satisfies Err, { status: 400 });
 
   const existing = await prisma.capsule.findFirst({ where: { id, clerkUserId: userId } });

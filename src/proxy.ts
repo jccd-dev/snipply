@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { de } from "zod/v4/locales";
 
 // Define which routes are public (no auth required)
 const isPublicRoute = createRouteMatcher([
@@ -14,7 +15,8 @@ export default clerkMiddleware(async (auth, req) => {
   }
 }, {
   // Helpful during local development to understand auth flow
-  debug: process.env.NODE_ENV === 'development',
+  // debug: process.env.NODE_ENV === 'development',
+  debug: false,
   // Mitigate local machine clock drift that can invalidate session tokens
   clockSkewInMs: 60_000,
 });

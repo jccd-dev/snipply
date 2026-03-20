@@ -3,9 +3,14 @@
 import * as React from "react";
 import { useLibraryStore, type Folder } from "@/store/library";
 import { FolderIcon, CaretRightIcon, PlusIcon, TrashIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
+import { MoreHorizontal } from "lucide-react";
 import { pickColorDeterministic } from "@/theme/palette";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError || (typeof err === "string" && err.toLowerCase().includes("failed to fetch"));
@@ -130,6 +135,7 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
   const [isDragOver, setIsDragOver] = React.useState(false);
+  const [dropPosition, setDropPosition] = React.useState<"before" | "after" | null>(null);
 
   // Access TanStack Query client at the component level per hooks rules
   const queryClient = useQueryClient();
@@ -167,19 +173,23 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] })
   })
   const [open, setOpen] = React.useState(true);
+  const [capsuleToDelete, setCapsuleToDelete] = React.useState<{ id: string; title: string } | null>(null);
+  const [folderToDelete, setFolderToDelete] = React.useState<{ id: string; name: string } | null>(null);
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = async (e) => {
     e.preventDefault();
     // Stop event bubbling immediately so the sidebar's onDrop doesn't also fire
     e.stopPropagation();
     setIsDragOver(false);
+    const finalDropPosition = dropPosition;
+    setDropPosition(null);
+
     const data = e.dataTransfer.getData("text/plain");
     if (!data) return;
     if (data.startsWith("folder:")) {
       const sourceId = data.slice(7);
       if (sourceId !== folder.id) {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const isAfter = e.clientY > rect.top + rect.height / 2;
+        const isAfter = finalDropPosition === "after";
         reorderFolder(sourceId, folder.id, isAfter ? "after" : "before");
       }
       return;
@@ -214,6 +224,17 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
+
+    // Determine if dropping before or after for folder reordering
+    if (e.dataTransfer.types.includes("text/plain")) {
+      // Check if we are dragging a folder (unfortunately we can't read getData in dragover,
+      // but we can assume if they want lines they are dragging folders, if they want rings they drag capsules.
+      // A better way is to track the dragType via global state, but for now we can infer from our custom layout)
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isAfter = e.clientY > rect.top + rect.height / 2;
+      setDropPosition(isAfter ? "after" : "before");
+    }
+
     setIsDragOver(true);
   };
 
@@ -223,32 +244,43 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
     // Only clear drag over if we're actually leaving the folder container
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false);
+      setDropPosition(null);
     }
   };
 
   // Ordered capsules using custom order, fallback to filtered order
   const filteredCaps = capsules.filter((c) => c.folderId === folder.id);
   const key = folder.id;
-  const orderIds = customCapsuleOrder[key] ?? filteredCaps.map((c) => c.id);
+  const baseOrderIds = customCapsuleOrder[key] ?? filteredCaps.map((c) => c.id);
+  const orderIds = Array.from(new Set([
+    ...baseOrderIds.filter((id) => filteredCaps.some((c) => c.id === id)),
+    ...filteredCaps.map((c) => c.id).filter((id) => !baseOrderIds.includes(id)),
+  ]));
   const items = orderIds.map((id) => filteredCaps.find((c) => c.id === id)!).filter(Boolean);
 
   // Use folder hex color directly via CSS custom property
   const folderStyle = { ["--folder-accent" as any]: folder.color } as React.CSSProperties;
 
   return (
-    <div
-      className={[
-        "card w-full px-2 pt-2 pb-1 overflow-hidden transition-all duration-200",
-        isDragOver ? "ring-2 ring-blue-400 bg-blue-50/50 dark:bg-blue-950/20" : ""
-      ].join(" ")}
-      style={{ ...folderStyle, borderColor: "var(--folder-accent)" }}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      aria-label={`Folder ${folder.name}`}
-      aria-expanded={open}
-    >
-      <div className="flex items-center gap-2 mb-1.5 min-w-0 cursor-grab active:cursor-grabbing" draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", `folder:${folder.id}`)}>
+    <div className="relative">
+      {/* Visual drop indicator for "before" (only for folders) */}
+      {isDragOver && dropPosition === "before" && useLibraryStore.getState().dragType === "folder" && (
+        <div className="absolute -top-1.5 left-0 right-0 h-1 bg-blue-500 rounded-full z-10" />
+      )}
+
+      <div
+        className={[
+          "card w-full px-2 pt-2 pb-2 overflow-hidden transition-all duration-200",
+          isDragOver && useLibraryStore.getState().dragType === "capsule" ? "ring-2 ring-blue-400 bg-blue-50/50 dark:bg-blue-950/20" : ""
+        ].join(" ")}
+        style={{ ...folderStyle, borderColor: "var(--folder-accent)" }}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        aria-label={`Folder ${folder.name}`}
+        aria-expanded={open}
+      >
+      <div className="flex items-center gap-2 mb-1.5 min-w-0 cursor-grab active:cursor-grabbing" draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", `folder:${folder.id}`); useLibraryStore.getState().setDragType("folder"); }} onDragEnd={() => useLibraryStore.getState().setDragType(null)}>
         <button
           type="button"
           aria-label={open ? "Collapse folder" : "Expand folder"}
@@ -261,37 +293,43 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
           <FolderIcon size={16} weight="fill" style={{ color: "var(--folder-accent)" }} />
         </span>
         {editing ? (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={async () => {
-              const newName = name.trim() || "New Folder";
-              const prev = folder.name;
-              // optimistic update
-              renameFolder(folder.id, newName);
-              try {
-                const updateFolder = (id: string, name?: string) => apiUpdateFolder(id, { name });
-                // Use TanStack mutation ad-hoc
-                await (async () => {
-                  const res = await updateFolder(folder.id, newName);
-                  // Invalidate library cache to keep server-state aligned
-                  queryClient.invalidateQueries({ queryKey: ["library"] });
-                  return res;
-                })();
-              } catch (err) {
-                console.error(err);
-                // rollback on failure
-                renameFolder(folder.id, prev);
-              } finally {
-                setEditing(false);
-              }
-            }}
-            className="bg-transparent focus:outline-none text-sm font-medium truncate min-w-0 flex-1"
-            autoFocus
-          />
+          <div className="min-w-0 flex-1 flex">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={async () => {
+                const newName = name.trim() || "New Folder";
+                const prev = folder.name;
+                // optimistic update
+                renameFolder(folder.id, newName);
+                try {
+                  const updateFolder = (id: string, name?: string) => apiUpdateFolder(id, { name });
+                  // Use TanStack mutation ad-hoc
+                  await (async () => {
+                    const res = await updateFolder(folder.id, newName);
+                    // Invalidate library cache to keep server-state aligned
+                    queryClient.invalidateQueries({ queryKey: ["library"] });
+                    return res;
+                  })();
+                } catch (err) {
+                  console.error(err);
+                  // rollback on failure
+                  renameFolder(folder.id, prev);
+                } finally {
+                  setEditing(false);
+                }
+              }}
+              className="w-full bg-transparent focus:outline-none text-sm font-medium"
+              autoFocus
+            />
+          </div>
         ) : (
-          <button className="text-left text-sm font-medium truncate min-w-0 flex-1" onClick={() => setEditing(true)}>
-            {folder.name}
+          <button
+            className="text-left text-sm font-medium truncate min-w-0 flex-1"
+            onClick={() => setEditing(true)}
+            title={folder.name}
+          >
+            {folder.name.length > 20 ? folder.name.slice(0, 20) + "..." : folder.name}
           </button>
         )}
         {/* Delete folder button */}
@@ -299,43 +337,9 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
           aria-label="Delete folder"
           title="Delete folder"
           className="size-6 grid place-items-center rounded-md hover:bg-muted text-red-500"
-          onClick={async (e) => {
+          onClick={(e) => {
             e.stopPropagation();
-            beginMutation();
-            const prevFolders = useLibraryStore.getState().folders;
-            const prevCaps = useLibraryStore.getState().capsules;
-            const prevCache = queryClient.getQueryData<{
-              folders: Array<{ id: string; name: string; createdAt: string }>;
-              capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
-            }>(["library"]);
-            // Optimistic remove from store
-            removeFolder(folder.id);
-            // Optimistically update query cache to prevent flicker
-            queryClient.setQueryData<{
-              folders: Array<{ id: string; name: string; createdAt: string }>;
-              capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
-            }>(["library"], (prev) => {
-              if (!prev) return prev;
-              return { ...prev, folders: prev.folders.filter((f) => f.id !== folder.id) };
-            });
-            try {
-              await apiDeleteFolder(folder.id);
-              // Keep cache aligned and let background refetch reconcile
-              queryClient.invalidateQueries({ queryKey: ["library"] });
-            } catch (err) {
-              console.error(err);
-              // Roll back only when we are truly unauthorized; otherwise keep optimistic state
-              const status = (err as { status?: number }).status;
-              if (status === 401 || status === 403) {
-                // Restore cache and store on auth errors
-                if (prevCache) {
-                  queryClient.setQueryData(["library"], prevCache);
-                }
-                useLibraryStore.setState({ folders: prevFolders, capsules: prevCaps });
-              }
-            } finally {
-              endMutation();
-            }
+            setFolderToDelete({ id: folder.id, name: folder.name });
           }}
         >
           <TrashIcon size={14} />
@@ -353,7 +357,8 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
                   className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
                   style={capStyle}
                   draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", `capsule:${c.id}`)}
+                  onDragStart={(e) => { e.dataTransfer.setData("text/plain", `capsule:${c.id}`); useLibraryStore.getState().setDragType("capsule"); }}
+                  onDragEnd={() => useLibraryStore.getState().setDragType(null)}
                   onClick={() => setActiveCapsule(c.id)}
                 >
                   <span className="flex items-center gap-2 min-w-0 w-full">
@@ -368,29 +373,35 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
                      )}
                   </span>
                 </button>
-                {/* Delete capsule button (appears on hover) */}
-                <button
-                  aria-label="Delete doc"
-                  title="Delete doc"
-                  className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition size-6 grid place-items-center rounded-md hover:bg-muted text-red-500"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const prevCaps = useLibraryStore.getState().capsules;
-                    beginMutation();
-                    removeCapsule(c.id);
-                    try {
-                      await deleteCapsuleMutation.mutateAsync(c.id);
-                    } catch (err) {
-                      console.error(err);
-                      useLibraryStore.setState({ capsules: prevCaps });
-                    } finally {
-                      endMutation();
-                    }
-                  }}
-                >
-                  <TrashIcon size={12} />
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon-xs" 
+                      className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
+                    >
+                      <MoreHorizontal />
+                      <span className="sr-only">Actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem disabled>Archive (soon)</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setCapsuleToDelete({ id: c.id, title: c.title || "Untitled" });
+                      }}
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             );
           })}
@@ -399,6 +410,100 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
           )}
         </div>
       )}
+      {/* Visual drop indicator for "after" (only for folders) */}
+      {isDragOver && dropPosition === "after" && useLibraryStore.getState().dragType === "folder" && (
+        <div className="absolute -bottom-1.5 left-0 right-0 h-1 bg-blue-500 rounded-full z-10" />
+      )}
+      </div>
+      <AlertDialog open={!!capsuleToDelete} onOpenChange={(openState) => { if (!openState) setCapsuleToDelete(null); }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete capsule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {capsuleToDelete?.title ?? "this capsule"}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                if (!capsuleToDelete) return;
+                const deleting = capsuleToDelete;
+                setCapsuleToDelete(null);
+                const prevCaps = useLibraryStore.getState().capsules;
+                beginMutation();
+                removeCapsule(deleting.id);
+                try {
+                  await deleteCapsuleMutation.mutateAsync(deleting.id);
+                  toast.success("Capsule deleted");
+                } catch (err) {
+                  console.error(err);
+                  useLibraryStore.setState({ capsules: prevCaps });
+                  toast.error("Failed to delete capsule");
+                } finally {
+                  endMutation();
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!folderToDelete} onOpenChange={(openState) => { if (!openState) setFolderToDelete(null); }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete folder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete {folderToDelete?.name ?? "this folder"}. Capsules inside will become uncategorized.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                if (!folderToDelete) return;
+                const deleting = folderToDelete;
+                setFolderToDelete(null);
+                beginMutation();
+                const prevFolders = useLibraryStore.getState().folders;
+                const prevCaps = useLibraryStore.getState().capsules;
+                const prevCache = queryClient.getQueryData<{
+                  folders: Array<{ id: string; name: string; createdAt: string }>;
+                  capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+                }>(["library"]);
+                removeFolder(deleting.id);
+                queryClient.setQueryData<{
+                  folders: Array<{ id: string; name: string; createdAt: string }>;
+                  capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
+                }>(["library"], (prev) => {
+                  if (!prev) return prev;
+                  return { ...prev, folders: prev.folders.filter((f) => f.id !== deleting.id) };
+                });
+                try {
+                  await apiDeleteFolder(deleting.id);
+                  queryClient.invalidateQueries({ queryKey: ["library"] });
+                  toast.success("Folder deleted");
+                } catch (err) {
+                  console.error(err);
+                  const status = (err as { status?: number }).status;
+                  if (status === 401 || status === 403) {
+                    if (prevCache) queryClient.setQueryData(["library"], prevCache);
+                    useLibraryStore.setState({ folders: prevFolders, capsules: prevCaps });
+                  }
+                  toast.error("Failed to delete folder");
+                } finally {
+                  endMutation();
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -439,9 +544,14 @@ function OrphanList(): React.ReactElement | null {
     mutationFn: (id: string) => apiDeleteCapsule(id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
+  const [capsuleToDelete, setCapsuleToDelete] = React.useState<{ id: string; title: string } | null>(null);
   // Ordered unsorted capsules using custom order, fallback to filtered order
   const filteredCaps = capsules.filter((c) => c.folderId === null);
-  const orderIds = customCapsuleOrder["unsorted"] ?? filteredCaps.map((c) => c.id);
+  const baseOrderIds = customCapsuleOrder["unsorted"] ?? filteredCaps.map((c) => c.id);
+  const orderIds = Array.from(new Set([
+    ...baseOrderIds.filter((id) => filteredCaps.some((c) => c.id === id)),
+    ...filteredCaps.map((c) => c.id).filter((id) => !baseOrderIds.includes(id)),
+  ]));
   const items = orderIds.map((id) => filteredCaps.find((c) => c.id === id)!).filter(Boolean);
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = async (e) => {
@@ -475,56 +585,77 @@ function OrphanList(): React.ReactElement | null {
     <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} aria-label="Documents">
       <div className="flex flex-col gap-1">
         {items.map((c) => {
-          const capColor = c.color; // unsorted should be null -> no accent
+          const capColor = c.color;
           const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
           return (
-            <div key={c.id} className={["group/cap relative"].join(" ")} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(null, sourceId, c.id, isAfter ? "after" : "before"); }}>
-              <button
-                className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
-                style={capStyle}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", `capsule:${c.id}`)}
-                onClick={() => setActiveCapsule(c.id)}
-              >
+            <div key={c.id} className="group/cap relative" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(null, sourceId, c.id, isAfter ? "after" : "before"); }}>
+              <button className="cap-item w-full text-left pr-20 text-xs" style={capStyle} draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", `capsule:${c.id}`); useLibraryStore.getState().setDragType("capsule"); }} onDragEnd={() => useLibraryStore.getState().setDragType(null)} onClick={() => setActiveCapsule(c.id)}>
                 <span className="flex items-center gap-2 min-w-0 w-full">
-                  {capColor && (
-                    <span className="size-2 rounded-full shrink-0" style={{ background: "var(--cap-accent)" }} />
-                  )}
-                  <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
-                    {c.title || "Untitled"}
-                  </span>
-                  {c.id.startsWith("cap_") && (
-                    <span className="text-[10px] text-amber-600">Pending sync</span>
-                  )}
+                  {capColor && <span className="size-2 rounded-full shrink-0" style={{ background: "var(--cap-accent)" }} />}
+                  <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>{c.title || "Untitled"}</span>
+                  {c.id.startsWith("cap_") && <span className="text-[10px] text-amber-600">Pending sync</span>}
                 </span>
-                </button>
-                {/* Delete capsule button (appears on hover) for orphan docs */}
-                <button
-                  aria-label="Delete doc"
-                  title="Delete doc"
-                  className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition size-6 grid place-items-center rounded-md hover:bg-muted text-red-500"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const prevCaps = useLibraryStore.getState().capsules;
-                    beginMutation();
-                    useLibraryStore.getState().removeCapsule(c.id);
-                    try {
-                      await deleteCapsuleMutation.mutateAsync(c.id);
-                    } catch (err) {
-                      console.error(err);
-                      useLibraryStore.setState({ capsules: prevCaps });
-                    } finally {
-                      endMutation();
-                    }
-                  }}
-                >
-                  <TrashIcon size={12} />
-                </button>
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon-xs" 
+                    className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition text-muted-foreground hover:text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                    }}
+                  >
+                    <MoreHorizontal />
+                    <span className="sr-only">Actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem disabled>Archive (soon)</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={() => setCapsuleToDelete({ id: c.id, title: c.title || "Untitled" })}>
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           );
         })}
       </div>
+      <AlertDialog open={!!capsuleToDelete} onOpenChange={(openState) => { if (!openState) setCapsuleToDelete(null); }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete capsule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {capsuleToDelete?.title ?? "this capsule"}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={async () => {
+              if (!capsuleToDelete) return;
+              const deleting = capsuleToDelete;
+              setCapsuleToDelete(null);
+              const prevCaps = useLibraryStore.getState().capsules;
+              beginMutation();
+              useLibraryStore.getState().removeCapsule(deleting.id);
+              try {
+                await deleteCapsuleMutation.mutateAsync(deleting.id);
+                toast.success("Capsule deleted");
+              } catch (err) {
+                console.error(err);
+                useLibraryStore.setState({ capsules: prevCaps });
+                toast.error("Failed to delete capsule");
+              } finally {
+                endMutation();
+              }
+            }}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -721,31 +852,6 @@ export default function RightSidebar(): React.ReactElement {
 
   const createCapsuleMutation = useMutation({
     mutationFn: apiCreateCapsule,
-    onSuccess: (created) => {
-      // Push new capsule into the library cache to reduce refetch cost
-      queryClient.setQueryData<{
-        folders: Array<{ id: string; name: string; createdAt: string }>;
-        capsules: Array<{ id: string; title: string; content: string; folderId: string | null; createdAt: string; updatedAt: string }>;
-      }>(
-        ["library"],
-        (prev) => {
-          if (!prev) return prev;
-          const now = new Date().toISOString();
-          const nextCapsules = [
-            {
-              id: created.id,
-              title: created.title ?? "Untitled",
-              content: created.content ?? "",
-              folderId: created.folderId ?? null,
-              createdAt: now,
-              updatedAt: now,
-            },
-            ...prev.capsules,
-          ];
-          return { ...prev, capsules: nextCapsules };
-        }
-      );
-    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
   });
   const createFolderMutation = useMutation({

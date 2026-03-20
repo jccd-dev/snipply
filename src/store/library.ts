@@ -12,8 +12,11 @@ function loadOrders(): { folders: string[]; capsules: Record<string, string[]> }
     const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
     if (!raw) return { folders: [], capsules: {} };
     const parsed = JSON.parse(raw);
-    const folders = Array.isArray(parsed?.folders) ? parsed.folders : [];
-    const capsules = parsed && typeof parsed.capsules === "object" ? parsed.capsules : {};
+    const folders = Array.isArray(parsed?.folders) ? uniqueIds(parsed.folders) : [];
+    const capsulesRaw = parsed && typeof parsed.capsules === "object" ? parsed.capsules : {};
+    const capsules = Object.fromEntries(
+      Object.entries(capsulesRaw).map(([k, v]) => [k, Array.isArray(v) ? uniqueIds(v as string[]) : []])
+    ) as Record<string, string[]>;
     return { folders, capsules };
   } catch {
     return { folders: [], capsules: {} };
@@ -53,6 +56,8 @@ export type LibraryState = {
   // mutation state for UX
   mutationsInFlight: number;
   isMutating: boolean;
+  // drag context for precise dropzone targeting
+  dragType: "folder" | "capsule" | null;
   // local-only folders pending server sync
   pendingFolderIds: string[];
   // Custom ordering state (client-side)
@@ -77,6 +82,7 @@ export type LibraryState = {
   moveCapsuleToFolder: (capsuleId: string, folderId: string | null) => void;
 
   setActiveCapsule: (id: string | null) => void;
+  setDragType: (type: "folder" | "capsule" | null) => void;
   beginMutation: () => void;
   endMutation: () => void;
 };
@@ -89,6 +95,10 @@ function folderKey(id: string | null): string {
   return id ?? "unsorted";
 }
 
+function uniqueIds(ids: string[]): string[] {
+  return Array.from(new Set(ids));
+}
+
 // Prepare initial orders from localStorage
 const __initialOrders = loadOrders();
 
@@ -98,6 +108,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
       activeCapsuleId: null,
       mutationsInFlight: 0,
       isMutating: false,
+      dragType: null,
       pendingFolderIds: [],
       customFolderOrder: __initialOrders.folders,
       customCapsuleOrder: __initialOrders.capsules,
@@ -106,7 +117,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
         const id = uid("fld");
         const folder: Folder = { id, name, createdAt: Date.now(), color: pickColorDeterministic(id) };
         set((s) => {
-          const nextOrder = [id, ...s.customFolderOrder];
+          const nextOrder = uniqueIds([id, ...s.customFolderOrder]);
           saveOrders(nextOrder, s.customCapsuleOrder);
           return { folders: [folder, ...s.folders], customFolderOrder: nextOrder };
         });
@@ -137,9 +148,11 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
 
       reorderFolder: (sourceId, targetId, position = "before") =>
         set((s) => {
-          const base = s.customFolderOrder.length
-            ? s.customFolderOrder.slice()
-            : s.folders.slice().sort((a, b) => b.createdAt - a.createdAt).map((f) => f.id);
+          const base = uniqueIds(
+            s.customFolderOrder.length
+              ? s.customFolderOrder.slice()
+              : s.folders.slice().sort((a, b) => b.createdAt - a.createdAt).map((f) => f.id)
+          );
           const filtered = base.filter((id) => id !== sourceId);
           const idx = filtered.indexOf(targetId);
           let insertAt = 0;
@@ -149,8 +162,9 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
             insertAt = position === "after" ? filtered.length : 0;
           }
           filtered.splice(insertAt, 0, sourceId);
-          saveOrders(filtered, s.customCapsuleOrder);
-          return { customFolderOrder: filtered };
+          const nextOrder = uniqueIds(filtered);
+          saveOrders(nextOrder, s.customCapsuleOrder);
+          return { customFolderOrder: nextOrder };
         }),
 
       addCapsule: (title = "Untitled", folderId: string | null = null) => {
@@ -169,7 +183,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
         const key = folderKey(folderId);
         const prevOrder = s.customCapsuleOrder[key] ?? [];
         set((s2) => {
-          const nextCapsOrder = { ...s2.customCapsuleOrder, [key]: [id, ...prevOrder] };
+          const nextCapsOrder = { ...s2.customCapsuleOrder, [key]: uniqueIds([id, ...prevOrder]) };
           saveOrders(s2.customFolderOrder, nextCapsOrder);
           return {
             capsules: [cap, ...s2.capsules],
@@ -204,11 +218,21 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
       commitCapsuleId: (tempId, realId) =>
         set((s) => {
           const nextCapsOrder = Object.fromEntries(
-            Object.entries(s.customCapsuleOrder).map(([k, arr]) => [k, arr.map((cid) => (cid === tempId ? realId : cid))])
-          );
+            Object.entries(s.customCapsuleOrder).map(([k, arr]) => [
+              k,
+              uniqueIds(arr.map((cid) => (cid === tempId ? realId : cid))),
+            ])
+          ) as Record<string, string[]>;
+          const mappedCaps = s.capsules.map((c) => (c.id === tempId ? { ...c, id: realId } : c));
+          const capsById = new Map<string, Capsule>();
+          for (const c of mappedCaps) {
+            const prev = capsById.get(c.id);
+            if (!prev || c.updatedAt >= prev.updatedAt) capsById.set(c.id, c);
+          }
+          const dedupedCaps = Array.from(capsById.values());
           saveOrders(s.customFolderOrder, nextCapsOrder);
           return {
-            capsules: s.capsules.map((c) => (c.id === tempId ? { ...c, id: realId } : c)),
+            capsules: dedupedCaps,
             activeCapsuleId: s.activeCapsuleId === tempId ? realId : s.activeCapsuleId,
             customCapsuleOrder: nextCapsOrder,
           };
@@ -217,7 +241,9 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
       reorderCapsuleInFolder: (folderId, sourceId, targetId, position = "before") =>
         set((s) => {
           const key = folderKey(folderId);
-          const base = (s.customCapsuleOrder[key] ?? s.capsules.filter((c) => (c.folderId ?? null) === folderId).map((c) => c.id)).slice();
+          const base = uniqueIds(
+            (s.customCapsuleOrder[key] ?? s.capsules.filter((c) => (c.folderId ?? null) === folderId).map((c) => c.id)).slice()
+          );
           const filtered = base.filter((id) => id !== sourceId);
           const idx = filtered.indexOf(targetId);
           let insertAt = 0;
@@ -227,7 +253,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
             insertAt = position === "after" ? filtered.length : 0;
           }
           filtered.splice(insertAt, 0, sourceId);
-          const nextCapsOrder = { ...s.customCapsuleOrder, [key]: filtered };
+          const nextCapsOrder = { ...s.customCapsuleOrder, [key]: uniqueIds(filtered) };
           saveOrders(s.customFolderOrder, nextCapsOrder);
           return { customCapsuleOrder: nextCapsOrder };
         }),
@@ -238,8 +264,9 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
           const prev = s.capsules.find((c) => c.id === capsuleId);
           const prevKey = folderKey(prev?.folderId ?? null);
           const nextKey = folderKey(folderId);
-          const removedPrev = (s.customCapsuleOrder[prevKey] ?? []).filter((cid) => cid !== capsuleId);
-          const nextArr = [capsuleId, ...(s.customCapsuleOrder[nextKey] ?? [])];
+          const removedPrev = uniqueIds((s.customCapsuleOrder[prevKey] ?? []).filter((cid) => cid !== capsuleId));
+          const nextBase = prevKey === nextKey ? removedPrev : uniqueIds(s.customCapsuleOrder[nextKey] ?? []);
+          const nextArr = uniqueIds([capsuleId, ...nextBase.filter((cid) => cid !== capsuleId)]);
           const nextCapsOrder = { ...s.customCapsuleOrder, [prevKey]: removedPrev, [nextKey]: nextArr };
           saveOrders(s.customFolderOrder, nextCapsOrder);
           return {
@@ -253,6 +280,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
         }),
 
       setActiveCapsule: (id) => set({ activeCapsuleId: id }),
+      setDragType: (type) => set({ dragType: type }),
       beginMutation: () => set((s) => ({ mutationsInFlight: s.mutationsInFlight + 1, isMutating: true })),
       endMutation: () =>
         set((s) => {
