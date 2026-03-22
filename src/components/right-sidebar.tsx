@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { useLibraryStore, type Folder } from "@/store/library";
-import { FolderIcon, CaretRightIcon, PlusIcon, TrashIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
-import { MoreHorizontal } from "lucide-react";
+import { FolderIcon, CaretRightIcon, PlusIcon, TrashIcon, ArrowClockwiseIcon, FileTextIcon } from "@phosphor-icons/react";
+import { MoreHorizontal, Search } from "lucide-react";
 import { pickColorDeterministic } from "@/theme/palette";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError || (typeof err === "string" && err.toLowerCase().includes("failed to fetch"));
@@ -114,10 +115,11 @@ async function apiDeleteFolder(id: string) {
 }
 
 // FolderItem component
-function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
+function FolderItem({ folder, searchQuery }: { folder: Folder; searchQuery: string }): React.ReactElement | null {
   // Optimize store subscriptions - use selective subscriptions for better re-render performance
   const renameFolder = useLibraryStore((s) => s.renameFolder);
   const capsules = useLibraryStore((s) => s.capsules);
+  const activeCapsuleId = useLibraryStore((s) => s.activeCapsuleId);
   const moveCapsuleToFolder = useLibraryStore((s) => s.moveCapsuleToFolder);
   const setActiveCapsule = useLibraryStore((s) => s.setActiveCapsule);
   const removeCapsule = useLibraryStore((s) => s.removeCapsule);
@@ -250,16 +252,30 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
 
   // Ordered capsules using custom order, fallback to filtered order
   const filteredCaps = capsules.filter((c) => c.folderId === folder.id);
+  const searchedCaps = searchQuery
+    ? filteredCaps.filter(c => c.title?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : filteredCaps;
+
+  const folderMatches = folder.name.toLowerCase().includes(searchQuery.toLowerCase());
+
   const key = folder.id;
   const baseOrderIds = customCapsuleOrder[key] ?? filteredCaps.map((c) => c.id);
   const orderIds = Array.from(new Set([
-    ...baseOrderIds.filter((id) => filteredCaps.some((c) => c.id === id)),
-    ...filteredCaps.map((c) => c.id).filter((id) => !baseOrderIds.includes(id)),
+    ...baseOrderIds.filter((id) => searchedCaps.some((c) => c.id === id)),
+    ...searchedCaps.map((c) => c.id).filter((id) => !baseOrderIds.includes(id)),
   ]));
-  const items = orderIds.map((id) => filteredCaps.find((c) => c.id === id)!).filter(Boolean);
+  const items = orderIds.map((id) => searchedCaps.find((c) => c.id === id)!).filter(Boolean);
 
-  // Use folder hex color directly via CSS custom property
-  const folderStyle = { ["--folder-accent" as any]: folder.color } as React.CSSProperties;
+  // Auto-expand if searching and there are matching items inside
+  React.useEffect(() => {
+    if (searchQuery && searchedCaps.length > 0) {
+      setOpen(true);
+    }
+  }, [searchQuery, searchedCaps.length]);
+
+  if (searchQuery && !folderMatches && searchedCaps.length === 0) {
+    return null;
+  }
 
   return (
     <div className="relative">
@@ -270,33 +286,37 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
 
       <div
         className={[
-          "card w-full px-2 pt-2 pb-2 overflow-hidden transition-all duration-200",
-          isDragOver && useLibraryStore.getState().dragType === "capsule" ? "ring-2 ring-blue-400 bg-blue-50/50 dark:bg-blue-950/20" : ""
+          "w-full pt-1 pb-1 overflow-hidden transition-all duration-200 group/folder",
+          isDragOver && useLibraryStore.getState().dragType === "capsule" ? "ring-2 ring-blue-400 bg-blue-50/50 dark:bg-blue-950/20 rounded-md" : ""
         ].join(" ")}
-        style={{ ...folderStyle, borderColor: "var(--folder-accent)" }}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         aria-label={`Folder ${folder.name}`}
         aria-expanded={open}
       >
-      <div className="flex items-center gap-2 mb-1.5 min-w-0 cursor-grab active:cursor-grabbing" draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", `folder:${folder.id}`); useLibraryStore.getState().setDragType("folder"); }} onDragEnd={() => useLibraryStore.getState().setDragType(null)}>
+      <div className="flex items-center gap-2 mb-1.5 min-w-0 cursor-grab active:cursor-grabbing hover:bg-muted/50 rounded-md px-2 py-1" draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", `folder:${folder.id}`); useLibraryStore.getState().setDragType("folder"); }} onDragEnd={() => useLibraryStore.getState().setDragType(null)}>
         <button
           type="button"
           aria-label={open ? "Collapse folder" : "Expand folder"}
           onClick={() => setOpen((v) => !v)}
-          className="size-6 grid place-items-center rounded-md hover:bg-muted shrink-0"
+          className="size-5 grid place-items-center rounded-md hover:bg-muted shrink-0 text-muted-foreground"
         >
-          <CaretRightIcon size={14} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
+          <CaretRightIcon size={12} className={["smooth", open ? "rotate-90" : "rotate-0"].join(" ")} />
         </button>
-        <span className="inline-flex items-center gap-1.5 shrink-0">
-          <FolderIcon size={16} weight="fill" style={{ color: "var(--folder-accent)" }} />
+        <span className="inline-flex items-center gap-1.5 shrink-0 text-muted-foreground">
+          <FolderIcon size={16} />
         </span>
         {editing ? (
           <div className="min-w-0 flex-1 flex">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
               onBlur={async () => {
                 const newName = name.trim() || "New Folder";
                 const prev = folder.name;
@@ -319,66 +339,88 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
                   setEditing(false);
                 }
               }}
-              className="w-full bg-transparent focus:outline-none text-sm font-medium"
+              className="w-full bg-transparent focus:outline-none text-sm font-medium h-5"
               autoFocus
             />
           </div>
         ) : (
           <button
             className="text-left text-sm font-medium truncate min-w-0 flex-1"
-            onClick={() => setEditing(true)}
+            onClick={() => setOpen((v) => !v)}
             title={folder.name}
           >
-            {folder.name.length > 20 ? folder.name.slice(0, 20) + "..." : folder.name}
+            {folder.name.length > 25 ? folder.name.slice(0, 25) + "..." : folder.name}
           </button>
         )}
-        {/* Delete folder button */}
-        <button
-          aria-label="Delete folder"
-          title="Delete folder"
-          className="size-6 grid place-items-center rounded-md hover:bg-muted text-red-500"
-          onClick={(e) => {
-            e.stopPropagation();
-            setFolderToDelete({ id: folder.id, name: folder.name });
-          }}
-        >
-          <TrashIcon size={14} />
-        </button>
-        {/* Removed manual color selectors for consistent automatic palette */}
+
+        {/* Dropdown for Folder Actions */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="opacity-0 group-hover/folder:opacity-100 transition text-muted-foreground hover:text-foreground shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+            >
+              <MoreHorizontal />
+              <span className="sr-only">Folder Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                setEditing(true);
+              }}
+            >
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={(e) => {
+                e.preventDefault();
+                setFolderToDelete({ id: folder.id, name: folder.name });
+              }}
+            >
+              Delete Folder
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {open && (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-[2px] relative">
+          <div className="absolute left-4 top-0 bottom-0 w-px bg-border/50" />
           {items.map((c) => {
-            const capColor = c.color ?? folder.color; // store ensures equality, fallback safe
-            const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
+            const isActive = activeCapsuleId === c.id;
             return (
-              <div key={c.id} className={["group/cap relative"].join(" ")} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(folder.id, sourceId, c.id, isAfter ? "after" : "before"); }}>
+              <div key={c.id} className="group/cap relative pl-6" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(folder.id, sourceId, c.id, isAfter ? "after" : "before"); }}>
                 <button
-                  className={["cap-item w-full text-left pr-20 text-xs"].join(" ")}
-                  style={capStyle}
+                  className={["w-full text-left pr-8 pl-3 py-1.5 text-sm rounded-md transition-colors border", isActive ? "bg-primary text-primary-foreground border-primary" : "bg-transparent border-transparent hover:bg-muted text-muted-foreground hover:text-foreground"].join(" ")}
                   draggable
                   onDragStart={(e) => { e.dataTransfer.setData("text/plain", `capsule:${c.id}`); useLibraryStore.getState().setDragType("capsule"); }}
                   onDragEnd={() => useLibraryStore.getState().setDragType(null)}
                   onClick={() => setActiveCapsule(c.id)}
                 >
                   <span className="flex items-center gap-2 min-w-0 w-full">
-                    {capColor && (
-                      <span className="size-2 rounded-full shrink-0" style={{ background: "var(--cap-accent)" }} />
+                    <FileTextIcon size={14} className="shrink-0" />
+                    <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
+                      {c.title || "Untitled"}
+                    </span>
+                    {c.id.startsWith("cap_") && (
+                      <span className="text-[10px] text-amber-400">Syncing...</span>
                     )}
-                     <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>
-                       {c.title || "Untitled"}
-                     </span>
-                     {c.id.startsWith("cap_") && (
-                       <span className="text-[10px] text-amber-600">Pending sync</span>
-                     )}
                   </span>
                 </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon-xs" 
-                      className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition text-muted-foreground hover:text-foreground"
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className={["absolute right-1 top-1.5 opacity-0 group-hover/cap:opacity-100 transition", isActive ? "text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/20" : "text-muted-foreground hover:text-foreground"].join(" ")}
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
@@ -392,7 +434,7 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
                     <DropdownMenuItem disabled>Archive (soon)</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      variant="destructive"
+                      className="text-destructive focus:text-destructive"
                       onSelect={(e) => {
                         e.preventDefault();
                         setCapsuleToDelete({ id: c.id, title: c.title || "Untitled" });
@@ -405,8 +447,8 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
               </div>
             );
           })}
-          {items.length === 0 && (
-            <div className="text-xs text-muted-foreground px-3 py-2">Drop docs here</div>
+          {items.length === 0 && !searchQuery && (
+            <div className="text-xs text-muted-foreground pl-9 py-2">Empty folder</div>
           )}
         </div>
       )}
@@ -508,9 +550,10 @@ function FolderItem({ folder }: { folder: Folder }): React.ReactElement {
   );
 }
 
-function OrphanList(): React.ReactElement | null {
+function OrphanList({ searchQuery }: { searchQuery: string }): React.ReactElement | null {
   // Optimize store subscriptions - use selective subscriptions for better re-render performance
   const capsules = useLibraryStore((s) => s.capsules);
+  const activeCapsuleId = useLibraryStore((s) => s.activeCapsuleId);
   const moveCapsuleToFolder = useLibraryStore((s) => s.moveCapsuleToFolder);
   const setActiveCapsule = useLibraryStore((s) => s.setActiveCapsule);
   const beginMutation = useLibraryStore((s) => s.beginMutation);
@@ -547,12 +590,16 @@ function OrphanList(): React.ReactElement | null {
   const [capsuleToDelete, setCapsuleToDelete] = React.useState<{ id: string; title: string } | null>(null);
   // Ordered unsorted capsules using custom order, fallback to filtered order
   const filteredCaps = capsules.filter((c) => c.folderId === null);
+  const searchedCaps = searchQuery
+    ? filteredCaps.filter(c => c.title?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : filteredCaps;
+
   const baseOrderIds = customCapsuleOrder["unsorted"] ?? filteredCaps.map((c) => c.id);
   const orderIds = Array.from(new Set([
-    ...baseOrderIds.filter((id) => filteredCaps.some((c) => c.id === id)),
-    ...filteredCaps.map((c) => c.id).filter((id) => !baseOrderIds.includes(id)),
+    ...baseOrderIds.filter((id) => searchedCaps.some((c) => c.id === id)),
+    ...searchedCaps.map((c) => c.id).filter((id) => !baseOrderIds.includes(id)),
   ]));
-  const items = orderIds.map((id) => filteredCaps.find((c) => c.id === id)!).filter(Boolean);
+  const items = orderIds.map((id) => searchedCaps.find((c) => c.id === id)!).filter(Boolean);
 
   const onDrop: React.DragEventHandler<HTMLDivElement> = async (e) => {
     e.preventDefault();
@@ -582,26 +629,28 @@ function OrphanList(): React.ReactElement | null {
   if (items.length === 0) return null;
 
   return (
-    <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} aria-label="Documents">
-      <div className="flex flex-col gap-1">
+    <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} aria-label="Documents" className="mt-8">
+      <div className="text-xs font-semibold text-muted-foreground mb-3 px-2 tracking-wider">RECENT CAPSULES</div>
+      <div className="flex flex-col gap-[2px]">
         {items.map((c) => {
-          const capColor = c.color;
-          const capStyle = capColor ? ({ ["--cap-accent" as any]: capColor } as React.CSSProperties) : undefined;
+          const isActive = activeCapsuleId === c.id;
           return (
             <div key={c.id} className="group/cap relative" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("capsule:")) return; const sourceId = data.slice(8); if (sourceId === c.id) return; const rect = e.currentTarget.getBoundingClientRect(); const isAfter = e.clientY > rect.top + rect.height / 2; reorderCapsuleInFolder(null, sourceId, c.id, isAfter ? "after" : "before"); }}>
-              <button className="cap-item w-full text-left pr-20 text-xs" style={capStyle} draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", `capsule:${c.id}`); useLibraryStore.getState().setDragType("capsule"); }} onDragEnd={() => useLibraryStore.getState().setDragType(null)} onClick={() => setActiveCapsule(c.id)}>
+              <button
+                className={["w-full text-left pr-8 pl-3 py-2 text-sm rounded-md transition-colors border", isActive ? "bg-primary text-primary-foreground border-primary" : "bg-transparent border-transparent hover:bg-muted text-muted-foreground hover:text-foreground"].join(" ")}
+                draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", `capsule:${c.id}`); useLibraryStore.getState().setDragType("capsule"); }} onDragEnd={() => useLibraryStore.getState().setDragType(null)} onClick={() => setActiveCapsule(c.id)}>
                 <span className="flex items-center gap-2 min-w-0 w-full">
-                  {capColor && <span className="size-2 rounded-full shrink-0" style={{ background: "var(--cap-accent)" }} />}
+                  <FileTextIcon size={16} className="shrink-0" />
                   <span className="truncate min-w-0 flex-1" title={c.title || "Untitled"}>{c.title || "Untitled"}</span>
-                  {c.id.startsWith("cap_") && <span className="text-[10px] text-amber-600">Pending sync</span>}
+                  {c.id.startsWith("cap_") && <span className="text-[10px] text-amber-400">Syncing...</span>}
                 </span>
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon-xs" 
-                    className="absolute right-1 top-1 opacity-0 group-hover/cap:opacity-100 transition text-muted-foreground hover:text-foreground"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className={["absolute right-1 top-2 opacity-0 group-hover/cap:opacity-100 transition", isActive ? "text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/20" : "text-muted-foreground hover:text-foreground"].join(" ")}
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
@@ -614,7 +663,7 @@ function OrphanList(): React.ReactElement | null {
                 <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuItem disabled>Archive (soon)</DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onSelect={() => setCapsuleToDelete({ id: c.id, title: c.title || "Untitled" })}>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setCapsuleToDelete({ id: c.id, title: c.title || "Untitled" })}>
                     Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -682,6 +731,8 @@ export default function RightSidebar(): React.ReactElement {
 
   const { isSignedIn } = useAuth();
   const queryClient = useQueryClient();
+
+  const [searchQuery, setSearchQuery] = React.useState("");
 
   // Compute ordered folders based on custom order with fallback to newest-first
   const folderById = new Map(folders.map((f) => [f.id, f]));
@@ -903,15 +954,15 @@ export default function RightSidebar(): React.ReactElement {
 
   return (
     <aside
-      className="w-full border-l border-border bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-[calc(100vh-56px)] sticky top-14 p-3 space-y-3 overflow-y-auto overflow-x-hidden"
+      className="w-full border-l border-border bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-[calc(100vh-56px)] sticky top-14 p-3 space-y-4 overflow-y-auto overflow-x-hidden"
       onDragOver={(e) => e.preventDefault()}
       onDrop={onSidebarDrop}
     >
-      <div className="flex items-center gap-2">
-        <div className="text-sm font-semibold">Library</div>
+      <div className="flex items-center gap-2 px-2">
+        <div className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Library</div>
         <div className="ms-auto flex gap-1.5">
           <button
-            className="size-8 grid place-items-center rounded-md hover:bg-muted"
+            className="size-7 grid place-items-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             aria-label="New Doc"
             title="New Doc"
             onClick={async () => {
@@ -946,7 +997,7 @@ export default function RightSidebar(): React.ReactElement {
             <PlusIcon size={16} />
           </button>
           <button
-            className="size-8 grid place-items-center rounded-md hover:bg-muted"
+            className="size-7 grid place-items-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             aria-label="New Folder"
             title="New Folder"
             onClick={async () => {
@@ -965,44 +1016,56 @@ export default function RightSidebar(): React.ReactElement {
               }
             }}
           >
-            <FolderIcon size={16} weight="fill" />
-          </button>
-          <button
-            className="size-8 grid place-items-center rounded-md hover:bg-muted"
-            aria-label="Sync now"
-            title="Sync now"
-            onClick={() => {
-              backoffRef.current.delay = 2000;
-              void syncPending();
-            }}
-          >
-            <ArrowClockwiseIcon size={16} />
+            <FolderIcon size={16} />
           </button>
         </div>
       </div>
-      <div className="grid gap-3">
+
+      <div className="px-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search in library..."
+            className="pl-8 bg-muted/50 border-none text-sm h-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-0">
         {orderedFolders.map((f) => (
           <div key={f.id} className="relative">
             {pendingFolderIds.includes(f.id) && (
               <span className="absolute right-2 top-1 text-[10px] text-amber-600">Pending sync</span>
             )}
-            <FolderItem folder={f} />
+            <FolderItem folder={f} searchQuery={searchQuery} />
           </div>
         ))}
-        {orderedFolders.length === 0 && (
-          <div className="text-xs text-muted-foreground">Create a folder to organize your docs.</div>
+        {orderedFolders.length === 0 && !searchQuery && (
+          <div className="text-xs text-muted-foreground px-2">Create a folder to organize your docs.</div>
         )}
         {/* End-of-list drop zone to place folder at bottom */}
-        {orderedFolders.length > 0 && (
+        {orderedFolders.length > 0 && !searchQuery && (
           <div
-            className="h-6 mt-1 rounded-md border border-dashed border-muted-foreground/30"
+            className="h-6 mt-1 rounded-md border border-dashed border-transparent hover:border-muted-foreground/30 transition-colors"
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const data = e.dataTransfer.getData("text/plain"); if (!data || !data.startsWith("folder:")) return; const sourceId = data.slice(7); const lastId = orderedFolders[orderedFolders.length - 1]?.id; if (!lastId || sourceId === lastId) return; reorderFolder(sourceId, lastId, "after"); }}
-            aria-label="Drop here to place folder at end"
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const data = e.dataTransfer.getData("text/plain");
+              if (!data || !data.startsWith("folder:")) return;
+              const sourceId = data.slice(7);
+              const lastId = orderedFolders[orderedFolders.length - 1].id;
+              if (sourceId !== lastId) {
+                reorderFolder(sourceId, lastId, "after");
+              }
+            }}
           />
         )}
       </div>
-      <OrphanList />
+      <OrphanList searchQuery={searchQuery} />
     </aside>
   );
 }
